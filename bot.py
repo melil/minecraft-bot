@@ -6,11 +6,12 @@ import os
 import re
 from typing import Set
 import aiohttp
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
     ContextTypes
 )
@@ -23,6 +24,11 @@ ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
 ADMIN_USER_IDS = set()
 
 monitor = ServerMonitor()
+
+# Idle shutdown monitoring
+IDLE_SHUTDOWN_TIMEOUT = 300  # 5 minutes in seconds
+idle_since = None  # Timestamp when players hit 0
+idle_monitoring_active = False
 
 # Настройка логирования
 logging.basicConfig(
@@ -57,6 +63,23 @@ def save_admin_ids():
 def is_admin(user_id: int) -> bool:
     """Проверяет, является ли пользователь администратором"""
     return user_id in ADMIN_USER_IDS
+
+def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
+    """Создает клавиатуру с кнопками управления сервером"""
+    keyboard = []
+    
+    # Кнопка статуса (доступна всем)
+    keyboard.append([InlineKeyboardButton("📊 Статус", callback_data="status")])
+    
+    # Кнопки администратора (только для админов)
+    if show_admin_buttons:
+        keyboard.append([
+            InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
+            InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
+        ])
+        keyboard.append([InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")])
+    
+    return InlineKeyboardMarkup(keyboard)
 
 async def start_server_via_api() -> str:
     """Запускает сервер Б через API TimeWeb"""
@@ -109,6 +132,102 @@ async def wait_until_playable(monitor: ServerMonitor, timeout=300):
         await asyncio.sleep(10)
 
     return False
+
+async def get_player_count() -> int:
+    """Returns the number of players online, or -1 if server is unavailable"""
+    try:
+        players_output = await execute_ssh_command("/root/scripts/players.sh")
+        if not players_output or "❌" in players_output:
+            return -1
+        
+        # Parse player count from output
+        match = re.search(r'There are (\d+) of a max of (\d+)', players_output)
+        if match:
+            return int(match.group(1))
+        
+        # Check for "There are 0" format
+        if "There are 0" in players_output:
+            return 0
+        
+        return -1
+    except Exception as e:
+        logger.error(f"Error getting player count: {e}")
+        return -1
+
+async def save_world_and_shutdown():
+    """Saves the world and shuts down the VPS"""
+    try:
+        logger.info("Starting idle shutdown: saving world and shutting down VPS")
+        result = await execute_ssh_command("/root/scripts/stop_server_manually.sh")
+        logger.info(f"Idle shutdown result: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error during idle shutdown: {e}")
+        return f"Error: {str(e)}"
+
+async def idle_shutdown_monitor(context: ContextTypes.DEFAULT_TYPE):
+    """Background task that monitors player count and shuts down server if idle"""
+    global idle_since, idle_monitoring_active
+    
+    if not idle_monitoring_active:
+        return
+    
+    try:
+        # Check if server is available
+        if not await monitor.ssh_available():
+            idle_since = None
+            return
+        
+        if not await monitor.minecraft_ready():
+            idle_since = None
+            return
+        
+        player_count = await get_player_count()
+        
+        if player_count == -1:
+            # Server unavailable or error
+            idle_since = None
+            return
+        
+        current_time = asyncio.get_event_loop().time()
+        
+        if player_count > 0:
+            # Players are online, reset idle timer
+            idle_since = None
+            logger.debug(f"Players online: {player_count}, resetting idle timer")
+        else:
+            # No players online
+            if idle_since is None:
+                # First time we see 0 players, start timer
+                idle_since = current_time
+                logger.info("Server is now empty, starting idle shutdown timer")
+            else:
+                # Check if timeout reached
+                idle_duration = current_time - idle_since
+                if idle_duration >= IDLE_SHUTDOWN_TIMEOUT:
+                    logger.info(f"Idle timeout reached ({IDLE_SHUTDOWN_TIMEOUT}s), shutting down server")
+                    idle_monitoring_active = False
+                    await save_world_and_shutdown()
+                else:
+                    remaining = IDLE_SHUTDOWN_TIMEOUT - idle_duration
+                    logger.debug(f"Server idle for {int(idle_duration)}s, {int(remaining)}s until shutdown")
+    except Exception as e:
+        logger.error(f"Error in idle shutdown monitor: {e}")
+
+async def start_idle_monitoring(application):
+    """Starts the idle monitoring background task"""
+    global idle_monitoring_active
+    idle_monitoring_active = True
+    
+    while idle_monitoring_active:
+        try:
+            # Run monitoring check
+            await idle_shutdown_monitor(None)
+            # Check every 30 seconds
+            await asyncio.sleep(30)
+        except Exception as e:
+            logger.error(f"Error in idle monitoring loop: {e}")
+            await asyncio.sleep(30)
 
 async def check_server_status() -> str:
     """Проверяет статус сервера Б и Minecraft"""
@@ -182,25 +301,30 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     
     if chat.type == "private":
+        show_admin = is_admin(user.id)
         welcome_text = (
             "👋 Привет! Я бот для управления Minecraft сервером.\n\n"
             "📋 Доступные команды:\n"
             "/status - статус сервера\n"
             "/players - список игроков онлайн\n"
-            "/start_server - запустить сервер (админы)\n"
-            "/stop_server - остановить сервер (админы)\n"
-            "/restart_server - перезагрузить сервер (админы)\n\n"
-            "👑 Команды для администраторов:\n"
-            "/add_admin <id> - добавить администратора\n"
-            "/list_admins - список администраторов\n"
-            "/del_admin <id> - удалить администратора\n\n"
-            "⚠️ Команды с пометкой (админы) доступны только в личных сообщениях."
         )
-        await update.message.reply_text(welcome_text)
+        if show_admin:
+            welcome_text += (
+                "/start_server - запустить сервер\n"
+                "/stop_server - остановить сервер\n"
+                "/restart_server - перезагрузить сервер\n\n"
+                "👑 Команды для администраторов:\n"
+                "/add_admin <id> - добавить администратора\n"
+                "/list_admins - список администраторов\n"
+                "/del_admin <id> - удалить администратора\n"
+            )
+        welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
+        await update.message.reply_text(welcome_text, reply_markup=get_control_keyboard(show_admin))
     else:
         await update.message.reply_text(
             "🤖 Бот Minecraft сервера активен.\n"
-            "Используйте /players для проверки игроков онлайн."
+            "Используйте /players для проверки игроков онлайн.",
+            reply_markup=get_control_keyboard(False)
         )
 
 async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -210,27 +334,35 @@ async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(status)
 
 async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start_server"""
+    global idle_since
+    user = update.effective_user
+    
     if update.effective_chat.type != "private":
+        await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
         return
 
-    if not is_admin(update.effective_user.id):
+    if not is_admin(user.id):
         await update.message.reply_text("❌ Нет прав")
         return
 
-    await update.message.reply_text("☁️ Запускаю сервер в облаке...")
-
+    msg = await update.message.reply_text("☁️ Запускаю сервер в облаке...", reply_markup=get_control_keyboard(True))
     await start_server_via_api()
 
-    await update.message.reply_text("⏳ Жду пока Minecraft станет доступен...")
+    await msg.edit_text("⏳ Жду пока Minecraft станет доступен...", reply_markup=get_control_keyboard(True))
 
     if await wait_until_playable(monitor):
-        await update.message.reply_text(
+        # Reset idle timer when server starts
+        idle_since = None
+        await msg.edit_text(
             "🎮 Minecraft сервер ГОТОВ!\n"
-            "✅ Можно заходить и играть"
+            "✅ Можно заходить и играть",
+            reply_markup=get_control_keyboard(True)
         )
     else:
-        await update.message.reply_text(
-            "⚠️ Сервер не стал доступен за 5 минут"
+        await msg.edit_text(
+            "⚠️ Сервер не стал доступен за 5 минут",
+            reply_markup=get_control_keyboard(True)
         )    
 
 
@@ -247,9 +379,9 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
     
-    status_msg = await update.message.reply_text("⏳ Останавливаю Minecraft сервер...")
+    status_msg = await update.message.reply_text("⏳ Останавливаю Minecraft сервер...", reply_markup=get_control_keyboard(True))
     result = await execute_ssh_command("/root/scripts/stop_server_manually.sh")
-    await status_msg.edit_text(result)
+    await status_msg.edit_text(result, reply_markup=get_control_keyboard(True))
 
 async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /restart_server (только для админов в ЛС)"""
@@ -264,19 +396,23 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
     
-    status_msg = await update.message.reply_text("⏳ Перезагружаю Minecraft сервер...")
+    status_msg = await update.message.reply_text("⏳ Перезагружаю Minecraft сервер...", reply_markup=get_control_keyboard(True))
     result = await execute_ssh_command("/root/scripts/reboot_server_manually.sh")
-    await status_msg.edit_text(result)
+    await status_msg.edit_text(result, reply_markup=get_control_keyboard(True))
     
     # Ждем и проверяем статус
     await asyncio.sleep(30)
     status = await check_server_status()
-    await update.message.reply_text(f"📊 Статус после перезагрузки:\n{status}")
+    await update.message.reply_text(f"📊 Статус после перезагрузки:\n{status}", reply_markup=get_control_keyboard(True))
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("⏳ Проверяю статус...")
+    """Обработчик команды /status"""
+    user = update.effective_user
+    show_admin = is_admin(user.id) and update.effective_chat.type == "private"
+    
+    msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=get_control_keyboard(show_admin))
     status = await monitor.full_status()
-    await msg.edit_text(status)
+    await msg.edit_text(status, reply_markup=get_control_keyboard(show_admin))
 
 async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет администратора"""
@@ -372,13 +508,99 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка работы бота"""
     await update.message.reply_text("🏓 Понг! Бот работает.")
 
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатий на inline кнопки"""
+    query = update.callback_query
+    user = query.from_user
+    chat = query.message.chat
+    
+    # Отвечаем на callback query, чтобы убрать индикатор загрузки
+    await query.answer()
+    
+    callback_data = query.data
+    show_admin = is_admin(user.id) and chat.type == "private"
+    
+    if callback_data == "status":
+        # Обновляем сообщение со статусом
+        await query.message.edit_text("⏳ Проверяю статус...", reply_markup=get_control_keyboard(show_admin))
+        status = await monitor.full_status()
+        await query.message.edit_text(status, reply_markup=get_control_keyboard(show_admin))
+    
+    elif callback_data == "start_server":
+        # Проверка прав и типа чата
+        if chat.type != "private":
+            await query.answer("⚠️ Эта команда доступна только в личных сообщениях.", show_alert=True)
+            return
+        
+        if not is_admin(user.id):
+            await query.answer("❌ У вас нет прав для выполнения этой команды.", show_alert=True)
+            return
+        
+        # Запуск сервера
+        global idle_since
+        await query.message.edit_text("☁️ Запускаю сервер в облаке...", reply_markup=get_control_keyboard(True))
+        await start_server_via_api()
+        await query.message.edit_text("⏳ Жду пока Minecraft станет доступен...", reply_markup=get_control_keyboard(True))
+        
+        if await wait_until_playable(monitor):
+            idle_since = None
+            await query.message.edit_text(
+                "🎮 Minecraft сервер ГОТОВ!\n"
+                "✅ Можно заходить и играть",
+                reply_markup=get_control_keyboard(True)
+            )
+        else:
+            await query.message.edit_text(
+                "⚠️ Сервер не стал доступен за 5 минут",
+                reply_markup=get_control_keyboard(True)
+            )
+    
+    elif callback_data == "stop_server":
+        # Проверка прав и типа чата
+        if chat.type != "private":
+            await query.answer("⚠️ Эта команда доступна только в личных сообщениях.", show_alert=True)
+            return
+        
+        if not is_admin(user.id):
+            await query.answer("❌ У вас нет прав для выполнения этой команды.", show_alert=True)
+            return
+        
+        # Остановка сервера
+        await query.message.edit_text("⏳ Останавливаю Minecraft сервер...", reply_markup=get_control_keyboard(True))
+        result = await execute_ssh_command("/root/scripts/stop_server_manually.sh")
+        await query.message.edit_text(result, reply_markup=get_control_keyboard(True))
+    
+    elif callback_data == "restart_server":
+        # Проверка прав и типа чата
+        if chat.type != "private":
+            await query.answer("⚠️ Эта команда доступна только в личных сообщениях.", show_alert=True)
+            return
+        
+        if not is_admin(user.id):
+            await query.answer("❌ У вас нет прав для выполнения этой команды.", show_alert=True)
+            return
+        
+        # Перезагрузка сервера
+        await query.message.edit_text("⏳ Перезагружаю Minecraft сервер...", reply_markup=get_control_keyboard(True))
+        result = await execute_ssh_command("/root/scripts/reboot_server_manually.sh")
+        await query.message.edit_text(result, reply_markup=get_control_keyboard(True))
+        
+        # Ждем и проверяем статус
+        await asyncio.sleep(30)
+        status = await check_server_status()
+        await query.message.reply_text(f"📊 Статус после перезагрузки:\n{status}", reply_markup=get_control_keyboard(True))
+
+async def post_init(application: Application) -> None:
+    """Callback that runs after application initialization to start background tasks"""
+    asyncio.create_task(start_idle_monitoring(application))
+
 def main():
     """Запуск бота"""
     # Загружаем список администраторов
     load_admin_ids()
     
-    # Создаем Application
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    # Создаем Application with post_init callback
+    application = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
     
     # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", start_command))
@@ -392,6 +614,9 @@ def main():
     application.add_handler(CommandHandler("add_admin", add_admin_command))
     application.add_handler(CommandHandler("del_admin", del_admin_command))
     application.add_handler(CommandHandler("list_admins", list_admins_command))
+    
+    # Добавляем обработчик callback query для inline кнопок
+    application.add_handler(CallbackQueryHandler(button_callback))
     
     # Запускаем бота
     logger.info("Бот запускается...")

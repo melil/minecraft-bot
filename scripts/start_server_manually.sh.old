@@ -1,0 +1,23 @@
+#!/bin/bash
+# Запуск Minecraft сервера в фоне через screen
+# Лог только один, перезаписывается при каждом запуске
+
+SCREEN_NAME="mc_server"
+LOG_FILE="/root/freshcraft_industrial_server/server.log"
+
+# Проверка существующей screen-сессии
+SCREEN_SESSION=$(screen -ls | awk '{print $1}' | grep -w "$SCREEN_NAME")
+
+if [ -z "$SCREEN_SESSION" ]; then
+    echo "Starting Minecraft server..."
+    
+    # Обнуляем лог перед запуском
+    > "$LOG_FILE"
+    
+    # Запуск сервера в screen, вывод в лог
+    screen -dmS $SCREEN_NAME bash -c "cd /root/freshcraft_industrial_server && ./run.sh"
+    
+    echo "Server started in screen session '$SCREEN_NAME'. Logs: $LOG_FILE"
+else
+    echo "Server already running in screen session '$SCREEN_NAME'."
+fi
