@@ -1,0 +1,79 @@
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.env/
+.env.bak/
+.venv/
+pip-wheel-metadata/
+
+# =====================
+# Environment / secrets
+# =====================
+.env
+.env.*
+*.env
+
+# =====================
+# IDE / Editors
+# =====================
+.idea/
+.vscode/
+*.iml
+
+# =====================
+# OS junk
+# =====================
+.DS_Store
+Thumbs.db
+
+# =====================
+# Logs
+# =====================
+*.log
+logs/
+
+# =====================
+# Build / packaging
+# =====================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =====================
+# Tests / coverage
+# =====================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# =====================
+# Mypy / Ruff / Pyright
+# =====================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# =====================
+# Jupyter
+# =====================
+.ipynb_checkpoints/
+
+# =====================
+# Runtime files
+# =====================
+*.pid
+*.sock
+
+# =====================
+# Systemd (если есть локально)
+# =====================
+*.service
+
