@@ -32,6 +32,8 @@ class RegRuClient:
         """
         url = f"{self.BASE_URL}/reglets/{self.reglet_id}/actions"
         payload = {"type": action_type}
+        logger.debug(url)
+        logger.debug(f"payload: {payload}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=self.headers, json=payload) as resp:
