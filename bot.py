@@ -16,8 +16,10 @@ from core.server.facade import ServerFacade
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
+from core.api.regru import RegRuClient
 
-facade = ServerFacade()
+reg_ru_api = RegRuClient(TIMEWEB_TOKEN, MINECRAFT_SERVER_ID)
+facade = ServerFacade(reg_ru_api)
 monitor = ServerMonitor()
 
 ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
