@@ -1,15 +1,15 @@
 # server_monitor.py
 import aiohttp
 from ssh import execute_ssh_command
-from config import TIMEWEB_TOKEN, SERVER_ID
+from core.config import TIMEWEB_TOKEN, MINECRAFT_SERVER_ID
 
 class ServerMonitor:
-    def __init__(self, server_id: str = SERVER_ID):
-        self.server_id = server_id
+    def __init__(self, MINECRAFT_SERVER_ID: str = MINECRAFT_SERVER_ID):
+        self.MINECRAFT_SERVER_ID = MINECRAFT_SERVER_ID
 
     async def cloud_status(self) -> str:
         headers = {"Authorization": f"Bearer {TIMEWEB_TOKEN}"}
-        url = f"https://api.timeweb.cloud/api/v1/servers/{self.server_id}"
+        url = f"https://api.timeweb.cloud/api/v1/servers/{self.MINECRAFT_SERVER_ID}"
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:

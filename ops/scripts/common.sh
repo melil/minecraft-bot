@@ -3,7 +3,7 @@
 # Source this file in other scripts to use the functions
 
 # RCON Configuration
-RCON_HOST="${RCON_HOST:-127.0.0.1}"
+RCON_HOST="${RCON_HOST:-$MINECRAFT_IP}"
 RCON_PORT="${RCON_PORT:-25575}"
 RCON_PASSWORD="${RCON_PASSWORD:-$RCON_PASS}"
 

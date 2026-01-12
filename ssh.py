@@ -1,11 +1,11 @@
 # ssh.py
 import asyncio
-from config import SERVER_B_SSH
+from core.config import MINECRAFT_SERVER_SSH
 
 async def execute_ssh_command(command: str) -> str:
     try:
         proc = await asyncio.create_subprocess_shell(
-            f"ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no {SERVER_B_SSH} '{command}'",
+            f"ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no {MINECRAFT_SERVER_SSH} '{command}'",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )

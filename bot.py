@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 import asyncio
 import logging
-import subprocess
 import os
 import re
-from typing import Set
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
-    filters,
     ContextTypes
 )
 from server_monitor import ServerMonitor
-from config import TELEGRAM_TOKEN, TIMEWEB_TOKEN, SERVER_ID, SERVER_B_IP, SERVER_B_SSH
+from core.config import TELEGRAM_TOKEN, TIMEWEB_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
 
 ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
+
+VPS_START_STOP_ENDPOINT = f"https://api.cloudvps.reg.ru/v1/reglets/{MINECRAFT_SERVER_ID}/actions"
 
 # Глобальные переменные
 ADMIN_USER_IDS = set()
@@ -66,11 +64,10 @@ def is_admin(user_id: int) -> bool:
 
 def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопками управления сервером"""
-    keyboard = []
+    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status")]]
     
     # Кнопка статуса (доступна всем)
-    keyboard.append([InlineKeyboardButton("📊 Статус", callback_data="status")])
-    
+
     # Кнопки администратора (только для админов)
     if show_admin_buttons:
         keyboard.append([
@@ -88,7 +85,7 @@ async def start_server_via_api() -> str:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {TIMEWEB_TOKEN}"
         }
-        url = f"https://api.timeweb.cloud/api/v1/servers/{SERVER_ID}/start"
+        url = f"https://api.timeweb.cloud/api/v1/servers/{MINECRAFT_SERVER_ID}/start"
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
@@ -103,7 +100,7 @@ async def start_server_via_api() -> str:
 async def execute_ssh_command(command: str) -> str:
     try:
         proc = await asyncio.create_subprocess_shell(
-            f"ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no {SERVER_B_SSH} '{command}'",
+            f"ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no {MINECRAFT_SERVER_SSH} '{command}'",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -239,7 +236,7 @@ async def check_server_status() -> str:
             # Если SSH недоступен, проверяем через API
             try:
                 headers = {"Authorization": f"Bearer {TIMEWEB_TOKEN}"}
-                url = f"https://api.timeweb.cloud/api/v1/servers/{SERVER_ID}"
+                url = f"https://api.timeweb.cloud/api/v1/servers/{MINECRAFT_SERVER_ID}"
                 
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers) as response:
