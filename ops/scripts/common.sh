@@ -3,9 +3,9 @@
 # Source this file in other scripts to use the functions
 
 # RCON Configuration
-RCON_HOST="${RCON_HOST:-127.0.0.1}"
+RCON_HOST="${RCON_HOST:-$MINECRAFT_IP}"
 RCON_PORT="${RCON_PORT:-25575}"
-RCON_PASSWORD="${RCON_PASSWORD:-SuperPassword228}"
+RCON_PASSWORD="${RCON_PASSWORD:-$RCON_PASS}"
 
 # Server Directory
 SERVER_DIR="${SERVER_DIR:-/root/freshcraft_industrial_server}"
@@ -34,16 +34,16 @@ stop_minecraft() {
     fi
 }
 
-# Start the Minecraft server
+# Start the Minecraft server via systemd
 start_minecraft() {
-    echo "Starting Minecraft server..."
-    if [ ! -d "$SERVER_DIR" ]; then
-        echo "Error: Server directory not found: $SERVER_DIR"
+    echo "Starting Minecraft server via systemd..."
+    if systemctl start minecraft 2>/dev/null; then
+        echo "Minecraft service started successfully"
+        return 0
+    else
+        echo "Error: Failed to start minecraft service"
         return 1
     fi
-    
-    cd "$SERVER_DIR" || exit 1
-    exec ./run.sh
 }
 
 # Get list of players online
@@ -57,16 +57,4 @@ save_and_stop_minecraft() {
     sleep 10
     stop_minecraft
     sleep 20
-}
-
-# Shutdown the VPS
-shutdown_vps() {
-    echo "Shutting down VPS..."
-    shutdown -h now
-}
-
-# Reboot the VPS
-reboot_vps() {
-    echo "Rebooting VPS..."
-    reboot
 }

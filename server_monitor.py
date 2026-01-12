@@ -1,15 +1,15 @@
 # server_monitor.py
 import aiohttp
 from ssh import execute_ssh_command
-from config import TIMEWEB_TOKEN, SERVER_ID
+from core.config import TIMEWEB_TOKEN, MINECRAFT_SERVER_ID
 
 class ServerMonitor:
-    def __init__(self, server_id: str = SERVER_ID):
-        self.server_id = server_id
+    def __init__(self, MINECRAFT_SERVER_ID: str = MINECRAFT_SERVER_ID):
+        self.MINECRAFT_SERVER_ID = MINECRAFT_SERVER_ID
 
     async def cloud_status(self) -> str:
         headers = {"Authorization": f"Bearer {TIMEWEB_TOKEN}"}
-        url = f"https://api.timeweb.cloud/api/v1/servers/{self.server_id}"
+        url = f"https://api.timeweb.cloud/api/v1/servers/{self.MINECRAFT_SERVER_ID}"
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
@@ -21,9 +21,18 @@ class ServerMonitor:
     async def ssh_available(self) -> bool:
         return await execute_ssh_command("echo OK") == "OK"
 
+    async def rcon_port_open(self) -> bool:
+        """Проверяет, открыт ли RCON порт (25575)"""
+        out = await execute_ssh_command("nc -z localhost 25575 && echo RCON_READY")
+        return "RCON_READY" in out
+
     async def minecraft_ready(self) -> bool:
-        out = await execute_ssh_command("nc -z localhost 25565 && echo READY")
-        return "READY" in out
+        """Проверяет, готов ли Minecraft сервер (проверяет порт игры и RCON)"""
+        # Проверяем порт игры (25565)
+        game_port = await execute_ssh_command("nc -z localhost 25565 && echo READY")
+        # Проверяем RCON порт (25575)
+        rcon_port = await self.rcon_port_open()
+        return "READY" in game_port and rcon_port
 
     async def players(self) -> str:
         return await execute_ssh_command("/root/scripts/players.sh")
