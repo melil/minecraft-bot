@@ -58,15 +58,3 @@ save_and_stop_minecraft() {
     stop_minecraft
     sleep 20
 }
-
-# Shutdown the VPS
-shutdown_vps() {
-    echo "Shutting down VPS..."
-    shutdown -h now
-}
-
-# Reboot the VPS
-reboot_vps() {
-    echo "Rebooting VPS..."
-    reboot
-}
