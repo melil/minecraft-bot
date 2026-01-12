@@ -1,7 +1,11 @@
 # core/domain/model/server_status.py
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
 from core.domain.model.server_state import ServerState
+
+if TYPE_CHECKING:
+    pass
 
 
 @dataclass
@@ -10,7 +14,7 @@ class ServerStatus:
     players: int = -1
     ip: Optional[str] = None
 
-    def format_server_status(self: ServerStatus) -> str:
+    def format_server_status(self: 'ServerStatus') -> str:  # Или укажи как строку
         match self.state:
             case ServerState.OFF:
                 return "⛔ Сервер выключен"
@@ -37,4 +41,3 @@ class ServerStatus:
 
             case _:
                 return "❓ Неизвестное состояние"
-
