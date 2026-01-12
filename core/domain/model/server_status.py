@@ -1,3 +1,4 @@
+# core/domain/model/server_status.py
 from dataclasses import dataclass
 from typing import Optional
 from core.domain.model.server_state import ServerState

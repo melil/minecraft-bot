@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env bot.py python3
 import asyncio
 import logging
 import os

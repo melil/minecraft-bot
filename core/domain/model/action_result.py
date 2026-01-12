@@ -1,3 +1,4 @@
+# core/domain/model/action_result.py
 from dataclasses import dataclass
 from typing import Optional
 

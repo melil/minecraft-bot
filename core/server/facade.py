@@ -1,4 +1,4 @@
-# server/facade.py
+# core/server/facade.py
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState

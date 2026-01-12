@@ -1,5 +1,6 @@
-from enum import StrEnum
+# core/domain/model/server_state.py
 
+from enum import StrEnum
 
 class ServerState(StrEnum):
     OFF = "off"            # VPS выключен

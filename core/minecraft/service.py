@@ -1,4 +1,4 @@
-# minecraft/service.py
+# core/minecraft/service.py
 import re
 
 from core.domain.model.action_result import ActionResult

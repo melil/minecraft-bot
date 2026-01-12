@@ -1,4 +1,4 @@
-# ssh/client.py
+# core/ssh/client.py
 import asyncio
 import logging
 
