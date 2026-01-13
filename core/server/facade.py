@@ -1,4 +1,6 @@
 # core/server/facade.py
+from typing import Optional
+
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
@@ -14,6 +16,8 @@ from core.ssh.client import is_available
 from core.api.regru import RegRuClient
 
 class ServerFacade:
+    status: Optional[ServerStatus] = None
+
     def __init__(self, regru: RegRuClient):
         self.regru = regru
 
@@ -60,16 +64,20 @@ class ServerFacade:
 
     # ---------- STATUS ----------
 
-    async def status(self) -> ServerStatus:
+    async def get_status(self) -> ServerStatus:
         vps_state = await self.regru.get_server_state()
         print(vps_state)
         # VPS выключен
         if vps_state == "off":
-            return ServerStatus(state=ServerState.OFF)
+            status = ServerStatus(state=ServerState.OFF)
+            self.status = status
+            return status
 
         # VPS включается (action new / in-progress)
         if vps_state in {"new", "in-progress", "starting"}:
-            return ServerStatus(state=ServerState.STARTING)
+            status = ServerStatus(state=ServerState.STARTING)
+            self.get_status = status
+            return status
 
         # VPS включен
         if vps_state == "active":
@@ -80,11 +88,13 @@ class ServerFacade:
                 print(f"players: {players}")
                 info = await self.regru.get_server_info()
 
-                return ServerStatus(
+                status = ServerStatus(
                     state=ServerState.READY,
                     players=players,
                     ip=info["reglet"]["ip"],
                 )
+                self.get_status = status
+                return status
 
             return ServerStatus(state=ServerState.BOOTING)
 
