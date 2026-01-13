@@ -73,8 +73,6 @@ class ServerFacade:
 
         # VPS включен
         if vps_state == "active":
-            if not await is_available():
-                return ServerStatus(state=ServerState.STARTING)
 
             # VPS есть, SSH есть → проверяем Minecraft
             if await is_ready():
