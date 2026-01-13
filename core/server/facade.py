@@ -77,6 +77,7 @@ class ServerFacade:
             # VPS есть, SSH есть → проверяем Minecraft
             if await is_ready():
                 players = await players_count()
+                print(f"players: {players}")
                 info = await self.regru.get_server_info()
 
                 return ServerStatus(
