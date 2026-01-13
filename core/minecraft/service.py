@@ -13,6 +13,7 @@ async def is_service_active() -> bool:
     Проверяет, что systemd-сервис minecraft запущен
     """
     output = await run("systemctl is-active minecraft || true")
+    print(f"is_service_active: {output}")
     return output.strip() == "active"
 
 
@@ -30,6 +31,7 @@ async def is_rcon_ready() -> bool:
 
     # mcrcon list обычно возвращает:
     # There are 0 of a max of 20 players online:
+    print(f"is_rcon_ready: {output}")
     return "There are" in output
 
 
@@ -45,7 +47,7 @@ async def is_ready() -> bool:
 
 async def players_count() -> int:
     output = await run(f"bash {SCRIPTS_DIR}/players.sh")
-
+    print(f"players count: {output}")
     if not output or "❌" in output:
         return -1
 

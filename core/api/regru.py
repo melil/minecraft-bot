@@ -32,8 +32,9 @@ class RegRuClient:
         """
         url = f"{self.BASE_URL}/reglets/{self.reglet_id}/actions"
         payload = {"type": action_type}
-        logger.debug(url)
-        logger.debug(f"payload: {payload}")
+        print(url)
+        print(f"token: {self.token}")
+        print(f"payload: {payload}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=self.headers, json=payload) as resp:
@@ -47,10 +48,12 @@ class RegRuClient:
                     }
 
                 resp.raise_for_status()
+                print(f"data: {data}")
                 return data
 
     async def _get_action(self, action_id: str) -> dict:
         url = f"{self.BASE_URL}/actions/{action_id}"
+        print(url)
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=self.headers) as resp:

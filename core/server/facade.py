@@ -62,7 +62,7 @@ class ServerFacade:
 
     async def status(self) -> ServerStatus:
         vps_state = await self.regru.get_server_state()
-
+        print(vps_state)
         # VPS выключен
         if vps_state == "off":
             return ServerStatus(state=ServerState.OFF)
@@ -72,7 +72,7 @@ class ServerFacade:
             return ServerStatus(state=ServerState.STARTING)
 
         # VPS включен
-        if vps_state == "on":
+        if vps_state == "active":
             if not await is_available():
                 return ServerStatus(state=ServerState.STARTING)
 

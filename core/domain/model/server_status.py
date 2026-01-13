@@ -17,12 +17,15 @@ class ServerStatus:
     def format_server_status(self: 'ServerStatus') -> str:  # Или укажи как строку
         match self.state:
             case ServerState.OFF:
+                print("⛔ Сервер выключен")
                 return "⛔ Сервер выключен"
 
             case ServerState.STARTING:
+                print("☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается")
                 return "☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается"
 
             case ServerState.BOOTING:
+                print("☁️ VPS: ✅ запущен\n🎮 Minecraft загружается")
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:

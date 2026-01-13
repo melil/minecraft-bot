@@ -15,7 +15,7 @@ async def run(command: str, timeout: int = 20) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-
+        print(f"run proc: {proc}")
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
 
         if proc.returncode == 0:
