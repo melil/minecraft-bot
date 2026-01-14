@@ -2,7 +2,6 @@
 import re
 from typing import List, Tuple
 
-from bot import PLAYER_ID_MAP
 from core.config import BOT_DIRECTORY
 from core.ssh.client import run
 
@@ -68,7 +67,15 @@ def clean_name(name: str) -> str:
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', name).strip()
 
+
 def format_player_name_md(name: str) -> str:
+    # ник из players.sh -> Telegram user_id
+    PLAYER_ID_MAP = {
+        "Trudovick": 78120051,
+        "Petr": 987654321,
+        "Alex": 555666777,
+    }
+
     user_id = PLAYER_ID_MAP.get(name)
 
     if user_id:

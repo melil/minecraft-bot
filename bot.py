@@ -26,13 +26,6 @@ ADMIN_IDS_FILE = "/root/minecraft-bot/78120051.txt"
 ADMIN_USER_IDS = set()
 
 
-# ник из players.sh -> Telegram user_id
-PLAYER_ID_MAP = {
-    "Trudovick": 123456789,
-    "Petr": 987654321,
-    "Alex": 555666777,
-}
-
 # Idle shutdown monitoring
 IDLE_SHUTDOWN_TIMEOUT = 300  # 5 minutes in seconds
 idle_since = None  # Timestamp when players hit 0
