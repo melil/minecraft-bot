@@ -132,12 +132,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /players (доступна всем)"""
-    status_msg = await update.message.reply_text("⏳ Проверяю статус сервера...")
+    status_msg = await update.message.reply_text("⏳ Проверяю статус сервера...", parse_mode="Markdown")
 
     try:
         status: ServerStatus = await facade.status()
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка при получении статуса: {e}")
+        await status_msg.edit_text(f"❌ Ошибка при получении статуса: {e}", parse_mode="Markdown")
         return
 
     # Если Minecraft не активен
@@ -147,7 +147,7 @@ async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Если Minecraft активен
-    text = ServerStatus.format_server_status(status)
+    text = ServerStatus.format_players(status)
     await status_msg.edit_text(text, parse_mode="Markdown")
 
 
@@ -182,7 +182,8 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if action_result.status == "locked":
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-            reply_markup=get_control_keyboard(True)
+            reply_markup=get_control_keyboard(True),
+            parse_mode="Markdown"
         )
         logger.info("Сервер заблокирован другой операцией")
         return
@@ -203,7 +204,8 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
         if status.state == ServerState.BOOTING.value:
             await msg.edit_text(
                 "⏳ VPS включен, Minecraft загружается...",
-                reply_markup=get_control_keyboard(True)
+                reply_markup=get_control_keyboard(True),
+                parse_mode="Markdown"
             )
             logger.info("Minecraft ещё загружается")
 
@@ -211,7 +213,8 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
         elif status.state == ServerState.STARTING.value:
             await msg.edit_text(
                 "☁️ VPS запускается...",
-                reply_markup=get_control_keyboard(True)
+                reply_markup=get_control_keyboard(True),
+                parse_mode="Markdown"
             )
             logger.info("VPS включается")
 
