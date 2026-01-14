@@ -77,17 +77,16 @@ def format_player_name_md(name: str) -> str:
         "_SoftEclipse_": 851242077,
         "aziatov": 138349349,
         "nice_korew25": 140821964,
-        #"Dusenka": 451548653,
-        #"MedoeBpASSechnIK": 860938417
     }
 
-    safe_name = escape_md(name)
     user_id = PLAYER_ID_MAP.get(name)
 
     if user_id:
-        return f"[{safe_name}](tg://user?id={user_id})"
+        # ВАЖНО: без escape_md
+        return f"[{name}](tg://user?id={user_id})"
     else:
-        return safe_name
+        # А вот тут можно экранировать, если без ссылки
+        return escape_md(name)
 
 def escape_md(text: str) -> str:
     # Минимум, который реально ломает Markdown
