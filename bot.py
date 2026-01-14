@@ -1,4 +1,4 @@
-# !/usr/bin/env python3
+#!/usr/bin/env python3
 import asyncio
 import logging
 import os
@@ -21,7 +21,7 @@ from core.api.regru import RegRuClient
 reg_ru_api = RegRuClient(TIMEWEB_TOKEN, MINECRAFT_SERVER_ID)
 facade = ServerFacade(reg_ru_api)
 
-ADMIN_IDS_FILE = "/root/minecraft-bot/78120051.txt"
+ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
 
 # ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
 ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
@@ -40,6 +40,9 @@ idle_monitoring_active = False
 idle_monitoring_enabled = True  # ✅ Флаг включения/выключения автовыключения
 monitoring_task = None
 bot_application = None  # ✅ Глобальная ссылка на Application
+
+# ==================== БЛОКИРОВКА ОПЕРАЦИЙ ====================
+active_operations = {}  # {chat_id: {task, operation_type, message_id}}
 
 # Настройка логирования
 logging.basicConfig(
@@ -264,10 +267,173 @@ def toggle_auto_shutdown() -> bool:
     return idle_monitoring_enabled
 
 
+# ==================== УПРАВЛЕНИЕ ОПЕРАЦИЯМИ ====================
+
+def is_operation_active(chat_id: int) -> bool:
+    """Проверяет, активна ли операция для чата"""
+    return chat_id in active_operations
+
+
+def cancel_operation(chat_id: int):
+    """Отменяет активную операцию"""
+    if chat_id in active_operations:
+        op = active_operations[chat_id]
+        if 'task' in op and not op['task'].done():
+            op['task'].cancel()
+        del active_operations[chat_id]
+        logger.info(f"Операция для чата {chat_id} отменена")
+
+
+async def perform_server_operation(
+        operation_type: str,
+        chat_id: int,
+        message_id: int,
+        show_admin: bool
+):
+    """
+    Фоновая задача для выполнения операций с сервером
+    operation_type: 'start', 'stop', 'restart'
+    """
+    try:
+        logger.info(f"Начало операции {operation_type} для чата {chat_id}")
+
+        # Выполняем операцию
+        if operation_type == "start":
+            action_result = await facade.start()
+            target_state = ServerState.READY
+            success_message = "✅ Сервер успешно запущен!"
+            group_notification = lambda status: (
+                "✅ <b>Сервер Minecraft запущен</b>\n\n"
+                f"IP: <code>{status.ip}</code>\n"
+                f"Игроков: {status.players}/{status.max_players}"
+            )
+
+        elif operation_type == "stop":
+            action_result = await facade.stop()
+            target_state = ServerState.OFF
+            success_message = "✅ Сервер успешно остановлен!"
+            group_notification = lambda status: (
+                "🛑 <b>Сервер Minecraft остановлен</b>\n\n"
+                "Причина: остановка администратором"
+            )
+
+        elif operation_type == "restart":
+            action_result = await facade.reboot()
+            target_state = ServerState.READY
+            success_message = "✅ Сервер успешно перезагружен!"
+            group_notification = lambda status: "🔄 <b>Сервер Minecraft перезагружен</b>"
+
+        else:
+            logger.error(f"Неизвестный тип операции: {operation_type}")
+            return
+
+        # Проверяем, что операция не была отменена
+        if chat_id not in active_operations:
+            logger.info(f"Операция {operation_type} была отменена")
+            return
+
+        # Проверяем результат
+        if action_result.status == "locked":
+            await bot_application.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
+                reply_markup=await get_dynamic_keyboard(show_admin),
+                parse_mode="HTML"
+            )
+            cancel_operation(chat_id)
+            return
+
+        # Ожидание завершения
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            # Проверяем отмену
+            if chat_id not in active_operations:
+                logger.info(f"Операция {operation_type} была отменена на шаге {attempt}")
+                return
+
+            status = await facade.status()
+
+            # Обновляем сообщение с прогрессом
+            progress = f"⏳ {attempt + 1}/{max_attempts}"
+            state_emoji = {
+                ServerState.OFF: "⚫",
+                ServerState.STARTING: "🟡",
+                ServerState.BOOTING: "🟠",
+                ServerState.READY: "🟢"
+            }.get(status.state, "⚪")
+
+            await bot_application.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"{state_emoji} {progress}\n\n{ServerStatus.format_server_status(status)}",
+                reply_markup=await get_dynamic_keyboard(show_admin),
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+
+            # Проверяем достижение целевого состояния
+            if status.state == target_state:
+                logger.info(f"Операция {operation_type} завершена успешно")
+
+                # Управление мониторингом
+                if operation_type == "start" or operation_type == "restart":
+                    start_idle_monitoring()
+                elif operation_type == "stop":
+                    stop_idle_monitoring()
+
+                # Финальное сообщение
+                await bot_application.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"{success_message}\n\n{ServerStatus.format_server_status(status)}",
+                    reply_markup=await get_dynamic_keyboard(show_admin),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+
+                # Уведомления
+                await notify_group(group_notification(status))
+
+                break
+
+            await asyncio.sleep(10)
+
+        # Удаляем операцию из активных
+        cancel_operation(chat_id)
+
+    except asyncio.CancelledError:
+        logger.info(f"Операция {operation_type} отменена пользователем")
+        # Восстанавливаем кнопки
+        try:
+            await bot_application.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="❌ Операция отменена",
+                reply_markup=await get_dynamic_keyboard(show_admin),
+                parse_mode="HTML"
+            )
+        except:
+            pass
+    except Exception as e:
+        logger.error(f"Ошибка в операции {operation_type}: {e}")
+        cancel_operation(chat_id)
+        try:
+            await bot_application.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"❌ Ошибка: {e}",
+                reply_markup=await get_dynamic_keyboard(show_admin),
+                parse_mode="HTML"
+            )
+        except:
+            pass
+
+
 # ==================== КЛАВИАТУРЫ ====================
 
-def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
-    """Создает клавиатуру с кнопками управления сервером"""
+async def get_dynamic_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
+    """Создает динамическую клавиатуру в зависимости от состояния сервера"""
     keyboard = [
         [
             InlineKeyboardButton("📊 Статус", callback_data="status"),
@@ -276,16 +442,48 @@ def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMark
     ]
 
     if show_admin_buttons:
-        keyboard.append([
-            InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
-            InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
-        ])
-        keyboard.append([
-            InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
-        ])
-        keyboard.append([
-            InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
-        ])
+        try:
+            # Получаем текущий статус сервера
+            status: ServerStatus = await facade.status()
+
+            # В зависимости от состояния показываем разные кнопки
+            if status.state == ServerState.OFF:
+                # Сервер выключен — только кнопка запуска
+                keyboard.append([
+                    InlineKeyboardButton("▶️ Запустить", callback_data="start_server")
+                ])
+
+            elif status.state in [ServerState.STARTING, ServerState.BOOTING]:
+                # Сервер запускается — показываем состояние
+                keyboard.append([
+                    InlineKeyboardButton("⏳ Запускается...", callback_data="status")
+                ])
+
+            elif status.state == ServerState.READY:
+                # Сервер работает — кнопки остановки и перезагрузки
+                keyboard.append([
+                    InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server"),
+                    InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
+                ])
+
+            # Кнопка настроек всегда доступна
+            keyboard.append([
+                InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
+            ])
+
+        except Exception as e:
+            logger.error(f"Ошибка получения статуса для клавиатуры: {e}")
+            # Фолбэк на стандартные кнопки
+            keyboard.append([
+                InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
+                InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
+            ])
+            keyboard.append([
+                InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
+            ])
+            keyboard.append([
+                InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
+            ])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -331,12 +529,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/del_admin <id> - удалить администратора\n"
             )
         welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
-        await update.message.reply_text(welcome_text, reply_markup=get_control_keyboard(show_admin))
+        keyboard = await get_dynamic_keyboard(show_admin)
+        await update.message.reply_text(welcome_text, reply_markup=keyboard)
     else:
+        keyboard = await get_dynamic_keyboard(False)
         await update.message.reply_text(
             "🤖 Бот Minecraft сервера активен.\n"
             "Используйте /players для проверки игроков онлайн.",
-            reply_markup=get_control_keyboard(False)
+            reply_markup=keyboard
         )
 
 
@@ -384,67 +584,29 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    logger.info(f"Пользователь {user.id} запустил команду /start_server")
-
-    msg = await update.message.reply_text(
-        "▶️ Запускаю сервер в облаке...",
-        reply_markup=get_control_keyboard(True)
-    )
-
-    action_result: ActionResult = await facade.start()
-
-    if action_result.status == "locked":
-        await msg.edit_text(
-            "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-            reply_markup=get_control_keyboard(True),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
+    # Проверяем активные операции
+    if is_operation_active(chat.id):
+        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
         return
 
-    total_wait = 0
-    while total_wait < 300:
-        status: ServerStatus = await facade.status()
+    logger.info(f"Пользователь {user.id} запустил команду /start_server")
 
-        if status.state == ServerState.READY.value:
-            logger.info("Minecraft сервер готов к игре")
-            # ✅ Запускаем мониторинг при готовности
-            start_idle_monitoring()
-            # ✅ Уведомления
-            await notify_group(
-                "✅ <b>Сервер Minecraft запущен</b>\n\n"
-                f"IP: <code>{status.ip}</code>\n"
-                f"Игроков: {status.players}/{status.max_players}"
-            )
-            break
-
-        if status.state == ServerState.BOOTING.value:
-            await msg.edit_text(
-                "⏳ VPS включен, Minecraft загружается...",
-                reply_markup=get_control_keyboard(True),
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
-
-        elif status.state == ServerState.STARTING.value:
-            await msg.edit_text(
-                "☁️ VPS запускается...",
-                reply_markup=get_control_keyboard(True),
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
-
-        await asyncio.sleep(10)
-        total_wait += 10
-
-    final_status: ServerStatus = await facade.status()
-    text = ServerStatus.format_server_status(final_status)
-    await msg.edit_text(
-        text,
-        reply_markup=get_control_keyboard(True),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+    keyboard = await get_dynamic_keyboard(True)
+    msg = await update.message.reply_text(
+        "▶️ Запускаю сервер в облаке...",
+        reply_markup=keyboard
     )
+
+    # Создаем фоновую задачу
+    task = asyncio.create_task(
+        perform_server_operation("start", chat.id, msg.message_id, True)
+    )
+
+    active_operations[chat.id] = {
+        'task': task,
+        'operation_type': 'start',
+        'message_id': msg.message_id
+    }
 
 
 async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -460,40 +622,27 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    # ✅ Останавливаем мониторинг
-    stop_idle_monitoring()
-
-    msg = await update.message.reply_text(
-        "⏹️ Останавливаю сервер...",
-        reply_markup=get_control_keyboard(True)
-    )
-
-    result: ActionResult = await facade.stop()
-
-    if result.status == "locked":
-        await msg.edit_text(
-            "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-            reply_markup=get_control_keyboard(True)
-        )
+    # Проверяем активные операции
+    if is_operation_active(chat.id):
+        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
         return
 
-    for _ in range(30):
-        status: ServerStatus = await facade.status()
-        if status.state == ServerState.OFF:
-            break
-        await asyncio.sleep(10)
-
-    final_status: ServerStatus = await facade.status()
-    text = ServerStatus.format_server_status(final_status)
-    await msg.edit_text(
-        text,
-        reply_markup=get_control_keyboard(True),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+    keyboard = await get_dynamic_keyboard(True)
+    msg = await update.message.reply_text(
+        "⏹️ Останавливаю сервер...",
+        reply_markup=keyboard
     )
 
-    # ✅ Уведомления
-    await notify_group("🛑 <b>Сервер Minecraft остановлен</b>\n\nПричина: остановка администратором")
+    # Создаем фоновую задачу
+    task = asyncio.create_task(
+        perform_server_operation("stop", chat.id, msg.message_id, True)
+    )
+
+    active_operations[chat.id] = {
+        'task': task,
+        'operation_type': 'stop',
+        'message_id': msg.message_id
+    }
 
 
 async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -509,63 +658,43 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    # ✅ Останавливаем мониторинг на время перезагрузки
-    stop_idle_monitoring()
+    # Проверяем активные операции
+    if is_operation_active(chat.id):
+        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
+        return
 
+    keyboard = await get_dynamic_keyboard(True)
     msg = await update.message.reply_text(
-        "🔄 Перезагрузка сервера...",
-        reply_markup=get_control_keyboard(True)
+        "🔄 Перезагружаю сервер...",
+        reply_markup=keyboard
     )
 
-    result: ActionResult = await facade.reboot()
-
-    text = ServerStatus.format_server_status(ServerStatus(state=ServerState.STARTING))
-    await msg.edit_text(
-        f"⏳ Сервер поставлен в очередь на перезагрузку\n{text}",
-        reply_markup=get_control_keyboard(True)
+    # Создаем фоновую задачу
+    task = asyncio.create_task(
+        perform_server_operation("restart", chat.id, msg.message_id, True)
     )
 
-    if result.status != "locked":
-        for _ in range(30):
-            status: ServerStatus = await facade.status()
-            if status.state == ServerState.READY:
-                # ✅ Запускаем мониторинг после перезагрузки
-                start_idle_monitoring()
-                break
-            await asyncio.sleep(10)
-
-        final_status: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(final_status)
-        await msg.edit_text(
-            f"📊 Статус после перезагрузки:\n{text}",
-            reply_markup=get_control_keyboard(True),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-
-        # ✅ Уведомления
-        await notify_group("🔄 <b>Сервер Minecraft перезагружен</b>")
-    else:
-        await msg.edit_text(
-            "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-            reply_markup=get_control_keyboard(True),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
+    active_operations[chat.id] = {
+        'task': task,
+        'operation_type': 'restart',
+        'message_id': msg.message_id
+    }
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     show_admin = is_admin(user.id) and update.effective_chat.type == "private"
 
-    msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=get_control_keyboard(show_admin))
+    keyboard = await get_dynamic_keyboard(show_admin)
+    msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=keyboard)
 
     result = await facade.status()
     text = ServerStatus.format_server_status(result)
 
+    keyboard = await get_dynamic_keyboard(show_admin)
     await msg.edit_text(
         text,
-        reply_markup=get_control_keyboard(show_admin),
+        reply_markup=keyboard,
         parse_mode="HTML",
         disable_web_page_preview=True
     )
@@ -678,7 +807,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     user = update.effective_user
-    show_admin = is_admin(user.id) and update.effective_chat.type == "private"
+    chat = update.effective_chat
+    show_admin = is_admin(user.id) and chat.type == "private"
 
     data = query.data
 
@@ -687,9 +817,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result)
+        keyboard = await get_dynamic_keyboard(show_admin)
         await query.edit_message_text(
             text,
-            reply_markup=get_control_keyboard(show_admin),
+            reply_markup=keyboard,
             parse_mode="HTML",
             disable_web_page_preview=True
         )
@@ -743,105 +874,53 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "back_to_main":
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result)
+        keyboard = await get_dynamic_keyboard(show_admin)
         await query.edit_message_text(
             text,
-            reply_markup=get_control_keyboard(show_admin),
+            reply_markup=keyboard,
             parse_mode="HTML",
             disable_web_page_preview=True
         )
 
-    # ========== ЗАПУСК СЕРВЕРА ==========
-    elif data == "start_server":
+    # ========== ОПЕРАЦИИ С СЕРВЕРОМ ==========
+    elif data in ["start_server", "stop_server", "restart_server"]:
         if not show_admin:
             await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
             return
 
-        await query.edit_message_text("▶️ Запускаю сервер...")
-        action_result: ActionResult = await facade.start()
+        # Проверяем активные операции
+        if is_operation_active(chat.id):
+            await query.answer("⚠️ Уже выполняется другая операция", show_alert=True)
+            return
 
-        if action_result.status == "locked":
-            await query.edit_message_text(
-                "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-                reply_markup=get_control_keyboard(True)
+        # Определяем тип операции
+        operation_map = {
+            "start_server": ("start", "▶️ Запускаю сервер..."),
+            "stop_server": ("stop", "⏹️ Останавливаю сервер..."),
+            "restart_server": ("restart", "🔄 Перезагружаю сервер...")
+        }
+
+        operation_type, initial_text = operation_map[data]
+
+        # Обновляем сообщение
+        keyboard = await get_dynamic_keyboard(True)
+        await query.edit_message_text(initial_text, reply_markup=keyboard)
+
+        # Создаем фоновую задачу
+        task = asyncio.create_task(
+            perform_server_operation(
+                operation_type,
+                chat.id,
+                query.message.message_id,
+                True
             )
-            return
+        )
 
-        for _ in range(30):
-            status: ServerStatus = await facade.status()
-            if status.state == ServerState.READY:
-                start_idle_monitoring()
-                await notify_group(
-                    "✅ <b>Сервер Minecraft запущен</b>\n\n"
-                    f"IP: <code>{status.ip}</code>\n"
-                    f"Игроков: {status.players}/{status.max_players}"
-                )
-                break
-            await asyncio.sleep(10)
-
-        final_status: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
-
-    # ========== ОСТАНОВКА СЕРВЕРА ==========
-    elif data == "stop_server":
-        if not show_admin:
-            await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
-            return
-
-        stop_idle_monitoring()
-
-        await query.edit_message_text("⏹️ Останавливаю сервер...")
-        result: ActionResult = await facade.stop()
-
-        if result.status == "locked":
-            await query.edit_message_text(
-                "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-                reply_markup=get_control_keyboard(True)
-            )
-            return
-
-        for _ in range(30):
-            status: ServerStatus = await facade.status()
-            if status.state == ServerState.OFF:
-                break
-            await asyncio.sleep(10)
-
-        final_status: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
-
-        await notify_group("🛑 <b>Сервер Minecraft остановлен</b>\n\nПричина: остановка администратором")
-
-    # ========== ПЕРЕЗАГРУЗКА СЕРВЕРА ==========
-    elif data == "restart_server":
-        if not show_admin:
-            await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
-            return
-
-        stop_idle_monitoring()
-
-        await query.edit_message_text("🔄 Перезагружаю сервер...")
-        result: ActionResult = await facade.reboot()
-
-        if result.status == "locked":
-            await query.edit_message_text(
-                "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-                reply_markup=get_control_keyboard(True)
-            )
-            return
-
-        for _ in range(30):
-            status: ServerStatus = await facade.status()
-            if status.state == ServerState.READY:
-                start_idle_monitoring()
-                break
-            await asyncio.sleep(10)
-
-        final_status: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
-
-        await notify_group("🔄 <b>Сервер Minecraft перезагружен</b>")
+        active_operations[chat.id] = {
+            'task': task,
+            'operation_type': operation_type,
+            'message_id': query.message.message_id
+        }
 
 
 def main():
