@@ -54,10 +54,9 @@ class ServerStatus:
             case ServerState.READY:
                 lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
                 if self.names:
-                    # HTML ссылки на игроков
                     player_links = [format_player_html(name) for name in self.names]
                     lines.append(", ".join(player_links))
-                return "<br>".join(lines)  # <br> вместо \n для HTML
+                return "\n".join(lines)  # <- используем \n, НЕ <br>
 
             case ServerState.ERROR:
                 return "❌ Ошибка определения состояния"
@@ -85,7 +84,6 @@ class ServerStatus:
                 if self.players >= 0:
                     lines.append(f"👥 Игроков онлайн: {self.players} / {self.max_players}")
                     if self.names:
-                        # HTML ссылки на игроков
                         player_links = [format_player_html(name) for name in self.names]
                         lines.append(", ".join(player_links))
 
@@ -102,7 +100,7 @@ class ServerStatus:
                 if self.balance:
                     lines.append(f"💰 Баланс: {self.balance} ₽")
 
-                return "<br>".join(lines)  # <br> для HTML
+                return "\n".join(lines)  # <- \n вместо <br>
 
             case ServerState.ERROR:
                 return "❌ Ошибка определения состояния"
