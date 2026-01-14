@@ -69,20 +69,29 @@ def clean_name(name: str) -> str:
 
 
 def format_player_name_md(name: str) -> str:
-    # ник из players.sh -> Telegram user_id
     PLAYER_ID_MAP = {
         "Trudovick": 78120051,
-        "Petr": 987654321,
-        "Alex": 555666777,
+        "PAPIN_TYZ": 123456789,
     }
 
+    safe_name = escape_md(name)
     user_id = PLAYER_ID_MAP.get(name)
 
     if user_id:
-        return f"[{name}](tg://user?id={user_id})"
+        return f"[{safe_name}](tg://user?id={user_id})"
     else:
-        return f"_{name}_"
+        return safe_name
 
+def escape_md(text: str) -> str:
+    # Минимум, который реально ломает Markdown
+    return (
+        text
+        .replace("_", r"\_")
+        .replace("[", r"\[")
+        .replace("]", r"\]")
+        .replace("(", r"\(")
+        .replace(")", r"\)")
+    )
 
 
 async def players_with_names_count() -> Tuple[int, int, List[str]]:
