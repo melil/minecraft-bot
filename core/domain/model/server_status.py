@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 @dataclass
 class ServerStatus:
     state: ServerState
-    players: int = -1
+    players: int = -1,
+    max_players: int = -1,
+    names: list[str] = None
     ip: Optional[str] = None,
     minecraft_active: bool = False,
     balance: Optional[str] = None,
@@ -33,7 +35,10 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = [f"👥 Игроков онлайн: {self.players}"]
+                lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
+                if self.names is not None:
+                    lines.append(f"\n{self.names}")
+
 
                 return "\n".join(lines)
 

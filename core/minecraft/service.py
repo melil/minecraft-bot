@@ -1,5 +1,6 @@
 # core/minecraft/service.py
 import re
+from typing import List
 
 from core.domain.model.action_result import ActionResult
 from core.ssh.client import run, is_available
@@ -60,6 +61,36 @@ async def players_count() -> int:
         return 0
 
     return -1
+
+
+async def players_with_names_count() -> tuple[int, int, List[str]]:
+    """
+    Возвращает кортеж: (текущее кол-во игроков, максимум, список имён).
+    Если ошибка, возвращает (-1, -1, []).
+    """
+    output = await run("/root/scripts/players.sh")
+    print(f"players output: {output}")
+
+    if not output or "❌" in output:
+        return -1, -1, []
+
+    # Пример строки:
+    # "There are 0 of a max of 20 players online: asd,jake,hansen"
+    match = re.search(r"There are (\d+) of a max of (\d+) players online", output)
+    if match:
+        current = int(match.group(1))
+        maximum = int(match.group(2))
+
+        # Получаем имена после двоеточия
+        names_part = output.split(":", 1)[-1].strip()
+        if names_part:
+            names = [name.strip() for name in names_part.split(",") if name.strip()]
+        else:
+            names = []
+
+        return current, maximum, names
+
+    return -1, -1, []
 
 
 async def save_and_stop() -> str:

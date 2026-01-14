@@ -2,7 +2,7 @@
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
-from core.minecraft.service import is_ready, players_count
+from core.minecraft.service import is_ready, players_count, players_with_names_count
 from core.ssh.client import is_available
 from core.minecraft.service import (
     is_ready,
@@ -77,13 +77,15 @@ class ServerFacade:
 
             # VPS есть, SSH есть → проверяем Minecraft
             if await is_ready():
-                players = await players_count()
+                players, max_players, names = await players_with_names_count()
                 print(f"players: {players}")
                 info = await self.regru.get_server_info()
 
                 return ServerStatus(
                     state=ServerState.READY,
                     players=players,
+                    max_players=max_players,
+                    names=names,
                     ip=info["reglet"]["ip"],
                     ram = info["reglet"]["memory"],
                     disk = f"{info['reglet']['disk']} / {info['reglet']['image']['size_gigabytes']}",
