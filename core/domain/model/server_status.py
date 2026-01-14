@@ -76,7 +76,7 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ <b>VPS запущен</b>", "⛏️ <b>Minecraft</b>"]
+                lines = ["⛏️ <b>LameHorse Minecraft Server</b>"]
 
                 if self.minecraft_active:
                     lines.append("🟢 Сервер активен")
@@ -87,6 +87,7 @@ class ServerStatus:
                         player_links = [format_player_html(name) for name in self.names]
                         lines.append(", ".join(player_links))
 
+                lines.append("<p>")
                 lines.append("☁️ <b>VPS</b>:")
                 if self.ip:
                     lines.append(f"🌍 IP: <code>{escape(self.ip)}</code>")
