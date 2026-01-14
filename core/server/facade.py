@@ -62,6 +62,7 @@ class ServerFacade:
 
     async def status(self) -> ServerStatus:
         vps_state = await self.regru.get_server_state()
+        vps_balance = await self.regru.get_balance_string()
         print(vps_state)
         # VPS выключен
         if vps_state == "off":
@@ -84,6 +85,7 @@ class ServerFacade:
                     state=ServerState.READY,
                     players=players,
                     ip=info["reglet"]["ip"],
+                    balance=vps_balance
                 )
 
             return ServerStatus(state=ServerState.BOOTING)

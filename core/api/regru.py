@@ -115,3 +115,11 @@ class RegRuClient:
             async with session.get(url, headers=self.headers) as resp:
                 resp.raise_for_status()
                 return await resp.json()
+
+    async def get_balance_string(self) -> str:
+        """
+        on / off
+        """
+        balance = await self.get_balance()
+        return balance["balance_data"]["balance"]
+
