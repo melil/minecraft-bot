@@ -69,7 +69,7 @@ class ServerStatus:
                     lines.append("🟢 Сервер активен")
 
                 if self.players >= 0:
-                    lines.append(f"👥 Игроков онлайн: {self.players}")
+                    lines.append(f"👥 Игроков онлайн: {self.players} / {self.max_players}")
 
                 lines.append("\n☁️ *VPS*:")
                 if self.ip:

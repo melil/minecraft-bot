@@ -88,7 +88,7 @@ class ServerFacade:
                     names=names,
                     ip=info["reglet"]["ip"],
                     ram = info["reglet"]["memory"],
-                    disk = f"{info['reglet']['disk']} / {info['reglet']['image']['size_gigabytes']}",
+                    disk = f"{info['reglet']['image']['size_gigabytes']} / {info['reglet']['disk']}",
                     balance=vps_balance
                 )
 

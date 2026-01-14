@@ -1,6 +1,6 @@
 # core/minecraft/service.py
 import re
-from typing import List
+from typing import List, Tuple
 
 from core.domain.model.action_result import ActionResult
 from core.ssh.client import run, is_available
@@ -63,7 +63,12 @@ async def players_count() -> int:
     return -1
 
 
-async def players_with_names_count() -> tuple[int, int, List[str]]:
+def clean_name(name: str) -> str:
+    """Убирает ANSI escape-последовательности из имени"""
+    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', name).strip()
+
+async def players_with_names_count() -> Tuple[int, int, List[str]]:
     """
     Возвращает кортеж: (текущее кол-во игроков, максимум, список имён).
     Если ошибка, возвращает (-1, -1, []).
@@ -74,19 +79,18 @@ async def players_with_names_count() -> tuple[int, int, List[str]]:
     if not output or "❌" in output:
         return -1, -1, []
 
-    # Пример строки:
-    # "There are 0 of a max of 20 players online: asd,jake,hansen"
     match = re.search(r"There are (\d+) of a max of (\d+) players online", output)
     if match:
         current = int(match.group(1))
         maximum = int(match.group(2))
 
-        # Получаем имена после двоеточия
+        # Получаем имена после двоеточия и очищаем
         names_part = output.split(":", 1)[-1].strip()
-        if names_part:
-            names = [name.strip() for name in names_part.split(",") if name.strip()]
-        else:
-            names = []
+        names = [clean_name(name) for name in names_part.split(",") if name.strip()] if names_part else []
+
+        # На случай, если сервер вернул 0, а имена есть
+        if current == 0 and names:
+            current = len(names)
 
         return current, maximum, names
 
