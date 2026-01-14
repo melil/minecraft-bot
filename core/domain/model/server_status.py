@@ -34,15 +34,15 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ VPS запущен", "\n"]
+                lines = ["☁️ VPS запущен", f"\n ⛏️ Minecraft:"]
 
                 if self.minecraft_active:
-                    lines.append(f"🎮 Minecraft активен")
+                    lines.append(f"🟢 Сервер активен")
 
                 if self.players >= 0:
                     lines.append(f"👥 Игроков онлайн: {self.players}")
 
-                lines.append(f"\n ☁️ VPS Info:")
+                lines.append(f"\n ☁️ VPS:")
                 if self.ip:
                     lines.append(f"🌍 IP: `{self.ip}`")
 
