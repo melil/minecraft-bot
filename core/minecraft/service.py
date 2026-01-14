@@ -83,7 +83,7 @@ def format_player_name_md(name: str) -> str:
 
     if user_id:
         # ВАЖНО: без escape_md
-        return f"[{name}](tg://user?id={user_id})"
+        return f"[{escape_md(name)}](tg://user?id={user_id})"
     else:
         # А вот тут можно экранировать, если без ссылки
         return escape_md(name)
