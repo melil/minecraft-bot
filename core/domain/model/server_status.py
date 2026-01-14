@@ -36,7 +36,7 @@ class ServerStatus:
 
             case ServerState.READY:
                 lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
-                if self.names is not None:
+                if self.players > 0:
                     lines.append(f"\n{self.names}")
 
 
