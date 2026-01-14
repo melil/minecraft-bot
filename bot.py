@@ -84,7 +84,7 @@ def is_admin(user_id: int) -> bool:
 
 def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопками управления сервером"""
-    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status_command")]]
+    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status")]]
 
     # Кнопки администратора (только для админов)
     if show_admin_buttons:
@@ -455,7 +455,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin))
+        await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="Markdown")
 
     elif data == "start_server":
         if not show_admin:
