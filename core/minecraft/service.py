@@ -74,10 +74,10 @@ def format_player_name_md(name: str) -> str:
         "PAPIN_TYZ": 505878676,
         "orlan1211": 860938417,
         "_zari_1": 451548653,
-        "_SoftEclipse_": 451548653,
+        "_SoftEclipse_": 851242077,
         "aziatov": 138349349,
+        "nice_korew25": 140821964,
         #"Dusenka": 451548653,
-        "nice_korew25": 451548653,
         #"MedoeBpASSechnIK": 860938417
     }
 

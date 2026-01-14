@@ -149,14 +149,6 @@ async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Если Minecraft активен
     text = ServerStatus.format_players(status)
-    text += "[1](tg://user?id=140821964)"
-    text += "[2](tg://user?id=860938417)"
-    text += "[3](tg://user?id=138349349)"
-    text += "[4](tg://user?id=451548653)"
-    text += "[5](tg://user?id=78120051)"
-    text += "[6](tg://user?id=851242077)"
-    text += "[7](tg://user?id=505878676)"
-
 
     await status_msg.edit_text(text, parse_mode="Markdown")
 
