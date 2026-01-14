@@ -2,9 +2,8 @@
 import re
 from typing import List, Tuple
 
-from core.domain.model.action_result import ActionResult
-from core.ssh.client import run, is_available
 from core.config import BOT_DIRECTORY
+from core.ssh.client import run
 
 SCRIPTS_DIR = f"{BOT_DIRECTORY}/scripts"
 
