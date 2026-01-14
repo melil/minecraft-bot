@@ -741,6 +741,71 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = ServerStatus.format_server_status(result)
         await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="HTML", disable_web_page_preview=True)
 
+    elif data == "monitor_status":
+        if not show_admin:
+            await query.edit_message_text("❌ У вас нет прав для управления мониторингом.")
+            return
+
+        is_active = await is_monitoring_active()
+
+        if is_active:
+            status_text = "🟢 Мониторинг пустого сервера **АКТИВЕН**\n\n"
+            status_text += "Сервер будет автоматически отключен через 5 минут простоя без игроков.\n\n"
+
+            if idle_since is not None:
+                idle_time = int(time.time() - idle_since)
+                remaining = max(0, IDLE_SHUTDOWN_TIMEOUT - idle_time)
+                status_text += f"⏱️ Текущее время простоя: {idle_time // 60} мин {idle_time % 60} сек\n"
+                status_text += f"⏳ До отключения: {remaining // 60} мин {remaining % 60} сек"
+        else:
+            status_text = "🔴 Мониторинг пустого сервера **ОТКЛЮЧЕН**\n\n"
+            status_text += "Автоматическое отключение не работает.\n"
+            status_text += "Сервер не будет выключаться автоматически при простое."
+
+        keyboard = []
+        if is_active:
+            keyboard.append([InlineKeyboardButton("⏹️ Выключить мониторинг", callback_data="monitor_stop")])
+        else:
+            keyboard.append([InlineKeyboardButton("▶️ Включить мониторинг", callback_data="monitor_start")])
+
+        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="status")])
+
+        await query.edit_message_text(
+            status_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    elif data == "monitor_start":
+        if not show_admin:
+            await query.edit_message_text("❌ У вас нет прав.")
+            return
+
+        await start_idle_monitoring()
+        await query.edit_message_text(
+            "🟢 Мониторинг пустого сервера запущен!\n\n"
+            "Сервер будет автоматически отключен через 5 минут простоя без игроков.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⏹️ Выключить мониторинг", callback_data="monitor_stop")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="monitor_status")]
+            ])
+        )
+
+    elif data == "monitor_stop":
+        if not show_admin:
+            await query.edit_message_text("❌ У вас нет прав.")
+            return
+
+        await stop_idle_monitoring()
+        await query.edit_message_text(
+            "🔴 Мониторинг пустого сервера остановлен!\n\n"
+            "Автоматическое отключение отключено.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("▶️ Включить мониторинг", callback_data="monitor_start")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="monitor_status")]
+            ])
+        )
+
     elif data.startswith("idle_monitor_"):
         if not is_admin(user.id):
             await query.edit_message_text("❌ У вас нет прав для управления мониторингом.")
@@ -886,12 +951,32 @@ def main():
     # Добавляем обработчик callback query для inline кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Запускаем фоновую задачу мониторинга при старте
-    application.job_queue.run_once(
-        lambda context: asyncio.create_task(start_idle_monitoring()),
-        when=10  # Запустить через 10 секунд после старта бота
-    )
+    # Запускаем мониторинг при старте (через 5 секунд)
+    async def start_monitoring_on_boot(context):
+        logger.info("Автозапуск мониторинга пустого сервера...")
+        await start_idle_monitoring()
 
+        # Запускаем периодическую проверку состояния мониторинга
+
+    async def check_monitoring_status(context):
+        # Если задача упала, перезапускаем
+        if idle_monitor_task is not None and idle_monitor_task.done():
+            logger.warning("Задача мониторинга завершилась, перезапускаю...")
+            try:
+                # Проверяем, есть ли исключение
+                exc = idle_monitor_task.exception()
+                if exc:
+                    logger.error(f"Задача мониторинга упала с ошибкой: {exc}")
+            except (asyncio.InvalidStateError, Exception):
+                pass
+
+            await start_idle_monitoring()
+
+        # Проверяем каждые 30 секунд
+
+    application.job_queue.run_repeating(check_monitoring_status, interval=30, first=60)
+
+    application.job_queue.run_once(start_monitoring_on_boot, when=5)
     # Запускаем бота
     logger.info("Бот запускается...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
