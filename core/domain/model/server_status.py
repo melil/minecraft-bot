@@ -81,6 +81,9 @@ class ServerStatus:
                 if self.minecraft_active:
                     lines.append("🟢 Сервер активен")
 
+                if self.ip:
+                    lines.append(f"🌍 Connect: <code>{escape(self.ip)}</code>")
+
                 if self.players >= 0:
                     lines.append(f"👥 Игроков онлайн: {self.players} / {self.max_players}")
                     if self.names:
@@ -89,8 +92,7 @@ class ServerStatus:
 
                 lines.append(" ")
                 lines.append("☁️ <b>VPS</b>:")
-                if self.ip:
-                    lines.append(f"🌍 IP: <code>{escape(self.ip)}</code>")
+
 
                 if self.ram:
                     lines.append(f"⚡️ RAM: {self.ram} MB")
