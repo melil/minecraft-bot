@@ -34,26 +34,26 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ VPS запущен", f"\n ⛏️ **Minecraft**:"]
+                lines = ["☁️ *VPS запущен*", "\n⛏️ *Minecraft*:"]
 
                 if self.minecraft_active:
-                    lines.append(f"🟢 Сервер активен")
+                    lines.append("🟢 Сервер активен")
 
                 if self.players >= 0:
                     lines.append(f"👥 Игроков онлайн: {self.players}")
 
-                lines.append(f"\n☁️ **VPS**:")
+                lines.append("\n☁️ *VPS*:")
                 if self.ip:
                     lines.append(f"🌍 IP: `{self.ip}`")
 
                 if self.ram:
-                    lines.append(f"⚡️ RAM: {self.ram} MB")
+                    lines.append(f"⚡️ RAM: `{self.ram} MB`")
 
                 if self.disk:
-                    lines.append(f"💾 Disk: {self.disk} GB")
+                    lines.append(f"💾 Disk: `{self.disk} GB`")
 
                 if self.balance:
-                    lines.append(f"💰 Баланс: {self.balance} ₽")
+                    lines.append(f"💰 Баланс: `{self.balance} ₽`")
 
                 return "\n".join(lines)
 
