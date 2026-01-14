@@ -71,7 +71,14 @@ def clean_name(name: str) -> str:
 def format_player_name_md(name: str) -> str:
     PLAYER_ID_MAP = {
         "Trudovick": 78120051,
-        "PAPIN_TYZ": 123456789,
+        "PAPIN_TYZ": 505878676,
+        "orlan1211": 860938417,
+        "_zari_1": 451548653,
+        "_SoftEclipse_": 451548653,
+        "aziatov": 138349349,
+        #"Dusenka": 451548653,
+        "nice_korew25": 451548653,
+        #"MedoeBpASSechnIK": 860938417
     }
 
     safe_name = escape_md(name)
