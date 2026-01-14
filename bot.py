@@ -82,26 +82,17 @@ def is_admin(user_id: int) -> bool:
     return user_id == 78120051 or user_id in ADMIN_USER_IDS
 
 
-def get_control_keyboard(state: ServerState, show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
+def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
+    """Создает клавиатуру с кнопками управления сервером"""
     keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status")]]
 
-    start = [InlineKeyboardButton("▶️ Включить", callback_data="start_server")]
-    stop =  InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
-    restart = InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
-    # Админские кнопки зависят от статуса
+    # Кнопки администратора (только для админов)
     if show_admin_buttons:
-        if state == ServerState.OFF:
-            keyboard.append(start)
-        elif state == ServerState.STARTING:
-            pass  # только статус, кнопок нет
-        elif state == ServerState.ON:
-            keyboard.append([stop,restart])
-        elif state == ServerState.BOOTING:
-            pass  # только статус, кнопок нет
-        elif state == ServerState.READY:
-            keyboard.append([stop,restart])
-        elif state == ServerState.ERROR:
-            keyboard.append([start, stop, restart])
+        keyboard.append([
+            InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
+            InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
+        ])
+        keyboard.append([InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")])
 
     return InlineKeyboardMarkup(keyboard)
 
