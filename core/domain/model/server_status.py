@@ -47,10 +47,10 @@ class ServerStatus:
                     lines.append(f"🌍 IP: `{self.ip}`")
 
                 if self.ram:
-                    lines.append(f"⚡️ RAM: {self.ram}")
+                    lines.append(f"⚡️ RAM: {self.ram} MB")
 
                 if self.disk:
-                    lines.append(f"💾 Disk: {self.disk}")
+                    lines.append(f"💾 Disk: {self.disk} GB")
 
                 if self.balance:
                     lines.append(f"💰 Баланс: {self.balance} ₽")
