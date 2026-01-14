@@ -33,7 +33,7 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ *VPS запущен*", "\n⛏️ *Minecraft*:", f"👥 Игроков онлайн: {self.players}"]
+                lines = [f"👥 Игроков онлайн: {self.players}"]
 
                 return "\n".join(lines)
 

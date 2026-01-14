@@ -5,7 +5,7 @@ from core.domain.model.action_result import ActionResult
 from core.ssh.client import run, is_available
 from core.config import BOT_DIRECTORY
 
-SCRIPTS_DIR = f"{BOT_DIRECTORY}/ops/scripts"
+SCRIPTS_DIR = f"{BOT_DIRECTORY}/scripts"
 
 
 async def is_service_active() -> bool:
