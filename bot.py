@@ -1,8 +1,9 @@
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 import asyncio
 import logging
 import os
 import re
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -22,14 +23,23 @@ facade = ServerFacade(reg_ru_api)
 
 ADMIN_IDS_FILE = "/root/minecraft-bot/78120051.txt"
 
+# ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
+ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
+ENABLE_GROUP_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления в группу
+NOTIFICATION_GROUP_ID = None  # ✅ ID группы для уведомлений (например: -1001234567890)
+
 # Глобальные переменные
 ADMIN_USER_IDS = set()
 
+# ==================== IDLE SHUTDOWN СИСТЕМА ====================
+IDLE_SHUTDOWN_TIMEOUT = 300  # 5 минут в секундах
+CHECK_INTERVAL = 60  # Проверка каждую минуту
 
-# Idle shutdown monitoring
-IDLE_SHUTDOWN_TIMEOUT = 300  # 5 minutes in seconds
-idle_since = None  # Timestamp when players hit 0
+idle_since: datetime | None = None
 idle_monitoring_active = False
+idle_monitoring_enabled = True  # ✅ Флаг включения/выключения автовыключения
+monitoring_task = None
+bot_application = None  # ✅ Глобальная ссылка на Application
 
 # Настройка логирования
 logging.basicConfig(
@@ -37,19 +47,14 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # или INFO, если слишком много деталей
+logger.setLevel(logging.DEBUG)
 
-# Создаем обработчик вывода в консоль
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # уровень логов для консоли
-
-# Формат вывода
+console_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 console_handler.setFormatter(formatter)
-
-# Добавляем обработчик в логгер
 logger.addHandler(console_handler)
 
 
@@ -61,7 +66,6 @@ def load_admin_ids():
             with open(ADMIN_IDS_FILE, 'r') as f:
                 ADMIN_USER_IDS = set(int(line.strip()) for line in f if line.strip())
         else:
-            # Создаем файл с пустым списком
             with open(ADMIN_IDS_FILE, 'w') as f:
                 pass
     except Exception as e:
@@ -83,20 +87,225 @@ def is_admin(user_id: int) -> bool:
     return user_id == 78120051 or user_id in ADMIN_USER_IDS
 
 
+# ==================== УВЕДОМЛЕНИЯ ====================
+
+async def notify_admins(text: str):
+    """Отправляет уведомления всем админам"""
+    if not ENABLE_ADMIN_NOTIFICATIONS or not bot_application:
+        return
+
+    for admin_id in ADMIN_USER_IDS | {78120051}:
+        try:
+            await bot_application.bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Не удалось уведомить админа {admin_id}: {e}")
+
+
+async def notify_group(text: str):
+    """Отправляет уведомление в группу"""
+    if not ENABLE_GROUP_NOTIFICATIONS or not NOTIFICATION_GROUP_ID or not bot_application:
+        return
+
+    try:
+        await bot_application.bot.send_message(
+            chat_id=NOTIFICATION_GROUP_ID,
+            text=text,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить уведомление в группу {NOTIFICATION_GROUP_ID}: {e}")
+
+
+# ==================== МОНИТОРИНГ ПРОСТОЯ ====================
+
+async def idle_monitor_loop():
+    """
+    Фоновая задача, проверяющая количество игроков.
+    Запускает таймер выключения при 0 игроков.
+    """
+    global idle_since, idle_monitoring_active
+
+    logger.info("🔍 Мониторинг простоя запущен")
+
+    while idle_monitoring_active:
+        try:
+            # Пропускаем, если автовыключение отключено
+            if not idle_monitoring_enabled:
+                logger.debug("⏸️ Автовыключение отключено, мониторинг пропущен")
+                idle_since = None
+                await asyncio.sleep(CHECK_INTERVAL)
+                continue
+
+            # Получаем статус сервера
+            status: ServerStatus = await facade.status()
+
+            # Проверяем только если сервер в состоянии READY
+            if status.state != ServerState.READY:
+                logger.debug(f"Сервер не готов ({status.state}), мониторинг пропущен")
+                idle_since = None
+                await asyncio.sleep(CHECK_INTERVAL)
+                continue
+
+            players = status.players
+            logger.info(f"👥 Игроков онлайн: {players}")
+
+            # Логика таймера
+            if players == 0:
+                if idle_since is None:
+                    # Начало простоя
+                    idle_since = datetime.now()
+                    logger.warning(f"⏱️ Таймер простоя запущен: {idle_since.strftime('%H:%M:%S')}")
+                else:
+                    # Проверяем, прошло ли 5 минут
+                    elapsed = (datetime.now() - idle_since).total_seconds()
+                    remaining = IDLE_SHUTDOWN_TIMEOUT - elapsed
+
+                    logger.info(f"⏳ Простой {int(elapsed)}с / {IDLE_SHUTDOWN_TIMEOUT}с (осталось: {int(remaining)}с)")
+
+                    if elapsed >= IDLE_SHUTDOWN_TIMEOUT:
+                        logger.warning("🛑 Запуск автоматического выключения сервера")
+                        await auto_shutdown_server()
+                        idle_since = None
+                        break  # Выходим из цикла после выключения
+            else:
+                # Игроки есть — сбрасываем таймер
+                if idle_since is not None:
+                    logger.info(f"✅ Игроки вернулись, таймер сброшен")
+                idle_since = None
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в мониторинге: {e}")
+
+        await asyncio.sleep(CHECK_INTERVAL)
+
+    logger.info("🔍 Мониторинг простоя остановлен")
+
+
+async def auto_shutdown_server():
+    """
+    Автоматическое выключение сервера с уведомлениями
+    """
+    global idle_monitoring_active
+
+    logger.info("💾 Выполняю save-all и остановку сервера")
+
+    # Уведомления админам
+    await notify_admins(
+        "⚠️ <b>Автоматическое выключение</b>\n\n"
+        "Сервер был пуст 5 минут.\n"
+        "Выполняю сохранение и остановку..."
+    )
+
+    # Останавливаем сервер через facade
+    try:
+        result: ActionResult = await facade.stop()
+
+        if result.status == "locked":
+            logger.error("❌ Сервер заблокирован, не удалось остановить")
+            await notify_admins("❌ Не удалось остановить сервер (заблокирован)")
+            return
+
+        # Ждём остановки
+        for _ in range(30):
+            status: ServerStatus = await facade.status()
+            if status.state == ServerState.OFF:
+                logger.info("✅ Сервер успешно остановлен")
+                break
+            await asyncio.sleep(10)
+
+        # Уведомления о результате
+        await notify_admins("✅ Сервер успешно остановлен (автоматически)")
+        await notify_group(
+            "🛑 <b>Сервер Minecraft остановлен</b>\n\n"
+            "Причина: отсутствие игроков 5 минут"
+        )
+
+        # Останавливаем мониторинг
+        idle_monitoring_active = False
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при остановке сервера: {e}")
+        await notify_admins(f"❌ Ошибка при остановке: {e}")
+
+
+def start_idle_monitoring():
+    """Запускает фоновый мониторинг"""
+    global idle_monitoring_active, monitoring_task
+
+    if not idle_monitoring_active:
+        idle_monitoring_active = True
+        monitoring_task = asyncio.create_task(idle_monitor_loop())
+        logger.info("✅ Мониторинг простоя активирован")
+
+
+def stop_idle_monitoring():
+    """Останавливает фоновый мониторинг"""
+    global idle_monitoring_active, idle_since
+
+    idle_monitoring_active = False
+    idle_since = None
+    logger.info("🛑 Мониторинг простоя деактивирован")
+
+
+def toggle_auto_shutdown() -> bool:
+    """Переключает режим автовыключения"""
+    global idle_monitoring_enabled, idle_since
+
+    idle_monitoring_enabled = not idle_monitoring_enabled
+
+    if not idle_monitoring_enabled:
+        idle_since = None  # Сбрасываем таймер при отключении
+
+    logger.info(f"🔄 Автовыключение {'включено' if idle_monitoring_enabled else 'отключено'}")
+    return idle_monitoring_enabled
+
+
+# ==================== КЛАВИАТУРЫ ====================
+
 def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопками управления сервером"""
-    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status"),InlineKeyboardButton("💵 Пополнить", url="https://www.tbank.ru/cf/2dzkoyJFsJc")]]
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Статус", callback_data="status"),
+            InlineKeyboardButton("💵 Пополнить", url="https://www.tbank.ru/cf/2dzkoyJFsJc")
+        ]
+    ]
 
-    # Кнопки администратора (только для админов)
     if show_admin_buttons:
         keyboard.append([
             InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
             InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
         ])
-        keyboard.append([InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")])
+        keyboard.append([
+            InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
+        ])
 
     return InlineKeyboardMarkup(keyboard)
 
+
+def get_settings_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура настроек"""
+    auto_status = "🟢 ВКЛ" if idle_monitoring_enabled else "🔴 ВЫКЛ"
+
+    keyboard = [
+        [InlineKeyboardButton(
+            f"⏱️ Автовыключение: {auto_status}",
+            callback_data="toggle_auto_shutdown"
+        )],
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# ==================== КОМАНДЫ БОТА ====================
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -133,23 +342,32 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /players (доступна всем)"""
-    status_msg = await update.message.reply_text("⏳ Проверяю статус сервера...", parse_mode="HTML", disable_web_page_preview=True)
+    status_msg = await update.message.reply_text(
+        "⏳ Проверяю статус сервера...",
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
     try:
         status: ServerStatus = await facade.status()
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка при получении статуса: {e}", parse_mode="HTML", disable_web_page_preview=True)
+        await status_msg.edit_text(
+            f"❌ Ошибка при получении статуса: {e}",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
         return
 
-    # Если Minecraft не активен
-    if not status.state.BOOTING:
+    if status.state != ServerState.READY:
         text = ServerStatus.format_server_status(status)
-        await status_msg.edit_text(f"{text}\n🎮 Minecraft: не запущен", parse_mode="HTML", disable_web_page_preview=True)
+        await status_msg.edit_text(
+            f"{text}\n🎮 Minecraft: не запущен",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
         return
 
-    # Если Minecraft активен
     text = ServerStatus.format_players(status)
-
     await status_msg.edit_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
@@ -160,80 +378,72 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if chat.type != "private":
         await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-        logger.warning(f"Пользователь {user.id} попытался запустить сервер в чате {chat.id}")
         return
 
     if not is_admin(user.id):
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        logger.warning(f"Пользователь {user.id} без прав попытался запустить сервер")
         return
 
     logger.info(f"Пользователь {user.id} запустил команду /start_server")
 
-    # Шаг 1 — ставим VPS в очередь на включение через фасад
     msg = await update.message.reply_text(
         "▶️ Запускаю сервер в облаке...",
         reply_markup=get_control_keyboard(True)
     )
-    logger.info("Отправка команды на запуск VPS через фасад")
 
     action_result: ActionResult = await facade.start()
-    logger.info(f"facade.start() вернул статус: {action_result.status}")
 
-    # Если операция заблокирована
     if action_result.status == "locked":
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
             reply_markup=get_control_keyboard(True),
-            parse_mode="HTML", disable_web_page_preview=True
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
-        logger.info("Сервер заблокирован другой операцией")
         return
 
-    # Шаг 2 — ждём, пока VPS поднимется и Minecraft станет готов
     total_wait = 0
-    while total_wait < 300:  # максимум 5 минут
+    while total_wait < 300:
         status: ServerStatus = await facade.status()
-        logger.info(
-            f"Проверка статуса: Status={status.state}, players={status.players}, ip={status.ip}")
 
-        # Minecraft готов
         if status.state == ServerState.READY.value:
             logger.info("Minecraft сервер готов к игре")
+            # ✅ Запускаем мониторинг при готовности
+            start_idle_monitoring()
+            # ✅ Уведомления
+            await notify_group(
+                "✅ <b>Сервер Minecraft запущен</b>\n\n"
+                f"IP: <code>{status.ip}</code>\n"
+                f"Игроков: {status.players}/{status.max_players}"
+            )
             break
 
-        # VPS включен, Minecraft грузится
         if status.state == ServerState.BOOTING.value:
             await msg.edit_text(
                 "⏳ VPS включен, Minecraft загружается...",
                 reply_markup=get_control_keyboard(True),
-                parse_mode="HTML", disable_web_page_preview=True
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
-            logger.info("Minecraft ещё загружается")
 
-        # VPS всё ещё включается
         elif status.state == ServerState.STARTING.value:
             await msg.edit_text(
                 "☁️ VPS запускается...",
                 reply_markup=get_control_keyboard(True),
-                parse_mode="HTML", disable_web_page_preview=True
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
-            logger.info("VPS включается")
 
         await asyncio.sleep(10)
         total_wait += 10
-        logger.info(f"Прошло {total_wait} секунд ожидания")
 
-    # Шаг 3 — финальный статус
     final_status: ServerStatus = await facade.status()
-    logger.info(
-        f"Финальный статус после запуска: VPS={final_status.state}, MC_active={final_status.minecraft_active}, players={final_status.players}, ip={final_status.ip}")
-
     text = ServerStatus.format_server_status(final_status)
     await msg.edit_text(
         text,
         reply_markup=get_control_keyboard(True),
-        parse_mode="HTML", disable_web_page_preview=True
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
 
@@ -250,7 +460,9 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    # Шаг 1 — ставим VPS в очередь на остановку через фасад
+    # ✅ Останавливаем мониторинг
+    stop_idle_monitoring()
+
     msg = await update.message.reply_text(
         "⏹️ Останавливаю сервер...",
         reply_markup=get_control_keyboard(True)
@@ -258,29 +470,30 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     result: ActionResult = await facade.stop()
 
-    # Шаг 2 — если операция заблокирована
     if result.status == "locked":
         await msg.edit_text(
-            "⚠️ Сервер уже выполняет другую операция. Попробуйте позже.",
+            "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
             reply_markup=get_control_keyboard(True)
         )
         return
 
-    # Шаг 3 — ждём, пока VPS остановится
-    for _ in range(30):  # максимум ~5 минут ожидания
+    for _ in range(30):
         status: ServerStatus = await facade.status()
         if status.state == ServerState.OFF:
             break
         await asyncio.sleep(10)
 
-    # Шаг 4 — финальный статус
     final_status: ServerStatus = await facade.status()
     text = ServerStatus.format_server_status(final_status)
     await msg.edit_text(
         text,
         reply_markup=get_control_keyboard(True),
-        parse_mode="HTML", disable_web_page_preview=True
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
+
+    # ✅ Уведомления
+    await notify_group("🛑 <b>Сервер Minecraft остановлен</b>\n\nПричина: остановка администратором")
 
 
 async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -289,53 +502,55 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
 
     if chat.type != "private":
-        await update.message.reply_text(
-            "⚠️ Эта команда доступна только в личных сообщениях."
-        )
+        await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
         return
 
     if not is_admin(user.id):
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    # Шаг 1 — отправляем в очередь перезагрузки через фасад
+    # ✅ Останавливаем мониторинг на время перезагрузки
+    stop_idle_monitoring()
+
     msg = await update.message.reply_text(
         "🔄 Перезагрузка сервера...",
         reply_markup=get_control_keyboard(True)
     )
 
-    result: ActionResult = await facade.reboot()  # <-- теперь через facade
+    result: ActionResult = await facade.reboot()
 
-    # Шаг 2 — информируем пользователя о статусе очереди
-    text = ServerStatus.format_server_status(ServerStatus(
-        state=ServerState.STARTING
-    ))
-    await msg.edit_text(f"⏳ Сервер поставлен в очередь на перезагрузку\n{text}",
-                        reply_markup=get_control_keyboard(True))
+    text = ServerStatus.format_server_status(ServerStatus(state=ServerState.STARTING))
+    await msg.edit_text(
+        f"⏳ Сервер поставлен в очередь на перезагрузку\n{text}",
+        reply_markup=get_control_keyboard(True)
+    )
 
-    # Шаг 3 — ждём, пока Minecraft будет готов
     if result.status != "locked":
-        # Ожидаем готовности Minecraft (booting → ready)
-        for _ in range(30):  # максимум ~5 минут (30*10s)
+        for _ in range(30):
             status: ServerStatus = await facade.status()
             if status.state == ServerState.READY:
+                # ✅ Запускаем мониторинг после перезагрузки
+                start_idle_monitoring()
                 break
             await asyncio.sleep(10)
 
-        # Шаг 4 — выводим финальный статус
         final_status: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(final_status)
-        await update.message.reply_text(
+        await msg.edit_text(
             f"📊 Статус после перезагрузки:\n{text}",
             reply_markup=get_control_keyboard(True),
-            parse_mode="HTML", disable_web_page_preview=True
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
+
+        # ✅ Уведомления
+        await notify_group("🔄 <b>Сервер Minecraft перезагружен</b>")
     else:
-        # Если операция заблокирована
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
             reply_markup=get_control_keyboard(True),
-            parse_mode="HTML", disable_web_page_preview=True
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
 
 
@@ -348,7 +563,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await facade.status()
     text = ServerStatus.format_server_status(result)
 
-    await msg.edit_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="HTML", disable_web_page_preview=True)
+    await msg.edit_text(
+        text,
+        reply_markup=get_control_keyboard(show_admin),
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 
 async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -450,6 +670,8 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🏓 Понг! Бот работает.")
 
 
+# ==================== ОБРАБОТЧИК КНОПОК ====================
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатий на inline кнопки"""
     query = update.callback_query
@@ -460,18 +682,80 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
+    # ========== СТАТУС ==========
     if data == "status":
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="HTML", disable_web_page_preview=True)
+        await query.edit_message_text(
+            text,
+            reply_markup=get_control_keyboard(show_admin),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
 
+    # ========== НАСТРОЙКИ ==========
+    elif data == "settings":
+        if not show_admin:
+            await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
+            return
+
+        auto_status = "🟢 Включено" if idle_monitoring_enabled else "🔴 Отключено"
+        settings_text = (
+            "⚙️ <b>Настройки сервера</b>\n\n"
+            f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
+            f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
+            "Используйте кнопки ниже для изменения настроек:"
+        )
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=get_settings_keyboard(),
+            parse_mode="HTML"
+        )
+
+    # ========== ПЕРЕКЛЮЧЕНИЕ АВТОВЫКЛЮЧЕНИЯ ==========
+    elif data == "toggle_auto_shutdown":
+        if not show_admin:
+            await query.answer("❌ У вас нет прав", show_alert=True)
+            return
+
+        new_state = toggle_auto_shutdown()
+        status_emoji = "🟢" if new_state else "🔴"
+        status_text = "включено" if new_state else "отключено"
+
+        await query.answer(f"{status_emoji} Автовыключение {status_text}", show_alert=True)
+
+        # Обновляем меню настроек
+        auto_status = "🟢 Включено" if new_state else "🔴 Отключено"
+        settings_text = (
+            "⚙️ <b>Настройки сервера</b>\n\n"
+            f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
+            f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
+            "Используйте кнопки ниже для изменения настроек:"
+        )
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=get_settings_keyboard(),
+            parse_mode="HTML"
+        )
+
+    # ========== НАЗАД ==========
+    elif data == "back_to_main":
+        result: ServerStatus = await facade.status()
+        text = ServerStatus.format_server_status(result)
+        await query.edit_message_text(
+            text,
+            reply_markup=get_control_keyboard(show_admin),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+
+    # ========== ЗАПУСК СЕРВЕРА ==========
     elif data == "start_server":
         if not show_admin:
             await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
             return
 
-        # Логика запуска сервера
         await query.edit_message_text("▶️ Запускаю сервер...")
         action_result: ActionResult = await facade.start()
 
@@ -482,26 +766,30 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Ожидание запуска
         for _ in range(30):
             status: ServerStatus = await facade.status()
             if status.state == ServerState.READY:
+                start_idle_monitoring()
+                await notify_group(
+                    "✅ <b>Сервер Minecraft запущен</b>\n\n"
+                    f"IP: <code>{status.ip}</code>\n"
+                    f"Игроков: {status.players}/{status.max_players}"
+                )
                 break
             await asyncio.sleep(10)
 
         final_status: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(
-            text,
-            reply_markup=get_control_keyboard(True)
-        )
+        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
 
+    # ========== ОСТАНОВКА СЕРВЕРА ==========
     elif data == "stop_server":
         if not show_admin:
             await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
             return
 
-        # Логика остановки сервера
+        stop_idle_monitoring()
+
         await query.edit_message_text("⏹️ Останавливаю сервер...")
         result: ActionResult = await facade.stop()
 
@@ -512,7 +800,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Ожидание остановки
         for _ in range(30):
             status: ServerStatus = await facade.status()
             if status.state == ServerState.OFF:
@@ -521,17 +808,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         final_status: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(
-            text,
-            reply_markup=get_control_keyboard(True)
-        )
+        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
 
+        await notify_group("🛑 <b>Сервер Minecraft остановлен</b>\n\nПричина: остановка администратором")
+
+    # ========== ПЕРЕЗАГРУЗКА СЕРВЕРА ==========
     elif data == "restart_server":
         if not show_admin:
             await query.edit_message_text("❌ У вас нет прав для выполнения этой команды.")
             return
 
-        # Логика перезагрузки сервера
+        stop_idle_monitoring()
+
         await query.edit_message_text("🔄 Перезагружаю сервер...")
         result: ActionResult = await facade.reboot()
 
@@ -542,30 +830,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Ожидание перезагрузки
         for _ in range(30):
             status: ServerStatus = await facade.status()
             if status.state == ServerState.READY:
+                start_idle_monitoring()
                 break
             await asyncio.sleep(10)
 
         final_status: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(final_status)
-        await query.edit_message_text(
-            text,
-            reply_markup=get_control_keyboard(True)
-        )
+        await query.edit_message_text(text, reply_markup=get_control_keyboard(True))
+
+        await notify_group("🔄 <b>Сервер Minecraft перезагружен</b>")
 
 
 def main():
     """Запуск бота"""
-    # Загружаем список администраторов
+    global bot_application
+
     load_admin_ids()
 
-    # Создаем Application
     application = Application.builder().token(TELEGRAM_TOKEN).build()
+    bot_application = application  # ✅ Сохраняем глобальную ссылку
 
-    # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ping", ping_command))
@@ -578,10 +865,8 @@ def main():
     application.add_handler(CommandHandler("del_admin", del_admin_command))
     application.add_handler(CommandHandler("list_admins", list_admins_command))
 
-    # Добавляем обработчик callback query для inline кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Запускаем бота
     logger.info("Бот запускается...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
