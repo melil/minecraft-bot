@@ -339,7 +339,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await facade.status()
     text = ServerStatus.format_server_status(result)
 
-    await msg.edit_text(text, reply_markup=get_control_keyboard(show_admin))
+    await msg.edit_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="Markdown")
 
 
 async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
