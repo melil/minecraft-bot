@@ -46,7 +46,7 @@ async def is_ready() -> bool:
 
 
 async def players_count() -> int:
-    output = await run(f"bash {SCRIPTS_DIR}/players.sh")
+    output = await run("/root/scripts/players.sh")
     print(f"players count: {output}")
     print(f"scriptDir: {SCRIPTS_DIR}")
     if not output or "❌" in output:
