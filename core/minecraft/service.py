@@ -84,10 +84,13 @@ async def players_with_names_count() -> Tuple[int, int, List[str]]:
 
         # Получаем имена после двоеточия и очищаем
         names_part = output.split(":", 1)[-1].strip()
-        names = [clean_name(name) for name in names_part.split(",") if name.strip()] if names_part else []
+        names = []
+        if names_part:
+            names = [clean_name(name) for name in names_part.split(",")]
+            # фильтруем пустые
+            names = [n for n in names if n]
 
-        # На случай, если сервер вернул 0, а имена есть
-        if current == 0 and names:
+        if current == 0:
             current = len(names)
 
         return current, maximum, names
