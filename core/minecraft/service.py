@@ -2,6 +2,7 @@
 import re
 from typing import List, Tuple
 
+from bot import PLAYER_ID_MAP
 from core.config import BOT_DIRECTORY
 from core.ssh.client import run
 
@@ -67,9 +68,22 @@ def clean_name(name: str) -> str:
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', name).strip()
 
+def format_player_name_md(name: str) -> str:
+    user_id = PLAYER_ID_MAP.get(name)
+
+    if user_id:
+        # italic + ссылка на профиль
+        return f"_[_{name}_](tg://user?id={user_id})_"
+    else:
+        # просто italic, если айди нет
+        return f"_{name}_"
+
+
+
 async def players_with_names_count() -> Tuple[int, int, List[str]]:
     """
-    Возвращает кортеж: (текущее кол-во игроков, максимум, список имён).
+    Возвращает кортеж:
+    (текущее кол-во игроков, максимум, список имён (italic + tg-ссылки)).
     Если ошибка, возвращает (-1, -1, []).
     """
     output = await run("/root/scripts/players.sh")
@@ -79,21 +93,28 @@ async def players_with_names_count() -> Tuple[int, int, List[str]]:
         return -1, -1, []
 
     match = re.search(r"There are (\d+) of a max of (\d+) players online", output)
-    if match:
-        current = int(match.group(1))
-        maximum = int(match.group(2))
+    if not match:
+        return -1, -1, []
 
-        # Получаем имена после двоеточия и очищаем
-        names_part = output.split(":", 1)[-1].strip()
-        names = [clean_name(name) for name in names_part.split(",") if name.strip()] if names_part else []
+    current = int(match.group(1))
+    maximum = int(match.group(2))
 
-        # На случай, если сервер вернул 0, а имена есть
-        if current == 0 and names:
-            current = len(names)
+    names_part = output.split(":", 1)[-1].strip()
 
-        return current, maximum, names
+    raw_names = (
+        [clean_name(name) for name in names_part.split(",") if name.strip()]
+        if names_part
+        else []
+    )
 
-    return -1, -1, []
+    names = [format_player_name_md(name) for name in raw_names]
+
+    # если сервер вернул 0, но имена есть
+    if current == 0 and names:
+        current = len(names)
+
+    return current, maximum, names
+
 
 
 async def save_and_stop() -> str:
