@@ -133,24 +133,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /players (доступна всем)"""
-    status_msg = await update.message.reply_text("⏳ Проверяю статус сервера...", parse_mode="Markdown")
+    status_msg = await update.message.reply_text("⏳ Проверяю статус сервера...", parse_mode="HTML", disable_web_page_preview=True)
 
     try:
         status: ServerStatus = await facade.status()
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка при получении статуса: {e}", parse_mode="Markdown")
+        await status_msg.edit_text(f"❌ Ошибка при получении статуса: {e}", parse_mode="HTML", disable_web_page_preview=True)
         return
 
     # Если Minecraft не активен
     if not status.state.BOOTING:
         text = ServerStatus.format_server_status(status)
-        await status_msg.edit_text(f"{text}\n🎮 Minecraft: не запущен", parse_mode="Markdown")
+        await status_msg.edit_text(f"{text}\n🎮 Minecraft: не запущен", parse_mode="HTML", disable_web_page_preview=True)
         return
 
     # Если Minecraft активен
     text = ServerStatus.format_players(status)
 
-    await status_msg.edit_text(text, parse_mode="Markdown")
+    await status_msg.edit_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,7 +185,7 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
             reply_markup=get_control_keyboard(True),
-            parse_mode="Markdown"
+            parse_mode="HTML", disable_web_page_preview=True
         )
         logger.info("Сервер заблокирован другой операцией")
         return
@@ -207,7 +207,7 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await msg.edit_text(
                 "⏳ VPS включен, Minecraft загружается...",
                 reply_markup=get_control_keyboard(True),
-                parse_mode="Markdown"
+                parse_mode="HTML", disable_web_page_preview=True
             )
             logger.info("Minecraft ещё загружается")
 
@@ -216,7 +216,7 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await msg.edit_text(
                 "☁️ VPS запускается...",
                 reply_markup=get_control_keyboard(True),
-                parse_mode="Markdown"
+                parse_mode="HTML", disable_web_page_preview=True
             )
             logger.info("VPS включается")
 
@@ -233,7 +233,7 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await msg.edit_text(
         text,
         reply_markup=get_control_keyboard(True),
-        parse_mode="Markdown"
+        parse_mode="HTML", disable_web_page_preview=True
     )
 
 
@@ -279,7 +279,7 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await msg.edit_text(
         text,
         reply_markup=get_control_keyboard(True),
-        parse_mode="Markdown"
+        parse_mode="HTML", disable_web_page_preview=True
     )
 
 
@@ -328,14 +328,14 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(
             f"📊 Статус после перезагрузки:\n{text}",
             reply_markup=get_control_keyboard(True),
-            parse_mode="Markdown"
+            parse_mode="HTML", disable_web_page_preview=True
         )
     else:
         # Если операция заблокирована
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
             reply_markup=get_control_keyboard(True),
-            parse_mode="Markdown"
+            parse_mode="HTML", disable_web_page_preview=True
         )
 
 
@@ -348,7 +348,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await facade.status()
     text = ServerStatus.format_server_status(result)
 
-    await msg.edit_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="Markdown")
+    await msg.edit_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -464,7 +464,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result)
-        await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="Markdown")
+        await query.edit_message_text(text, reply_markup=get_control_keyboard(show_admin), parse_mode="HTML", disable_web_page_preview=True)
 
     elif data == "start_server":
         if not show_admin:

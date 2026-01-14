@@ -1,12 +1,32 @@
 # core/domain/model/server_status.py
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
+from html import escape
 
 from core.domain.model.server_state import ServerState
 
 if TYPE_CHECKING:
     pass
 
+PLAYER_ID_MAP = {
+    "Trudovick": 78120051,
+    "PAPIN_TYZ": 505878676,
+    "orlan1211": 860938417,
+    "_zari_1": 451548653,
+    "_SoftEclipse_": 851242077,
+    "aziatov": 138349349,
+    "nice_korew25": 140821964,
+}
+
+def format_player_html(name: str) -> str:
+    """
+    Возвращает HTML-ссылку на профиль Telegram или просто имя.
+    """
+    user_id = PLAYER_ID_MAP.get(name)
+    safe_name = escape(name)
+    if user_id:
+        return f'<a href="tg://user?id={user_id}">{safe_name}</a>'
+    return safe_name
 
 @dataclass
 class ServerStatus:
@@ -20,27 +40,24 @@ class ServerStatus:
     ram: Optional[str] = None,
     disk: Optional[str] = None,
 
-    def format_players(self: 'ServerStatus') -> str:  # Или укажи как строку
+    def format_players(self: 'ServerStatus') -> str:
         match self.state:
             case ServerState.OFF:
-                print("⛔ Сервер выключен")
                 return "⛔ Сервер выключен"
 
             case ServerState.STARTING:
-                print("☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается")
                 return "☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается"
 
             case ServerState.BOOTING:
-                print("☁️ VPS: ✅ запущен\n🎮 Minecraft загружается")
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
                 lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
                 if self.names:
-                    lines.append(", ".join(f"{name}" for name in self.names))
-
-
-                return "\n".join(lines)
+                    # HTML ссылки на игроков
+                    player_links = [format_player_html(name) for name in self.names]
+                    lines.append(", ".join(player_links))
+                return "<br>".join(lines)  # <br> вместо \n для HTML
 
             case ServerState.ERROR:
                 return "❌ Ошибка определения состояния"
@@ -48,34 +65,33 @@ class ServerStatus:
             case _:
                 return "❓ Неизвестное состояние"
 
-    def format_server_status(self: 'ServerStatus') -> str:  # Или укажи как строку
+    def format_server_status(self: 'ServerStatus') -> str:
         match self.state:
             case ServerState.OFF:
-                print("⛔ Сервер выключен")
                 return "⛔ Сервер выключен"
 
             case ServerState.STARTING:
-                print("☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается")
                 return "☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается"
 
             case ServerState.BOOTING:
-                print("☁️ VPS: ✅ запущен\n🎮 Minecraft загружается")
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ *VPS запущен*", "\n⛏️ *Minecraft*:"]
+                lines = ["☁️ <b>VPS запущен</b>", "⛏️ <b>Minecraft</b>"]
 
                 if self.minecraft_active:
                     lines.append("🟢 Сервер активен")
 
                 if self.players >= 0:
-                    lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
+                    lines.append(f"👥 Игроков онлайн: {self.players} / {self.max_players}")
                     if self.names:
-                        lines.append(", ".join(f"_{name}_" for name in self.names))
+                        # HTML ссылки на игроков
+                        player_links = [format_player_html(name) for name in self.names]
+                        lines.append(", ".join(player_links))
 
-                lines.append("\n☁️ *VPS*:")
+                lines.append("☁️ <b>VPS</b>:")
                 if self.ip:
-                    lines.append(f"🌍 IP: `{self.ip}`")
+                    lines.append(f"🌍 IP: <code>{escape(self.ip)}</code>")
 
                 if self.ram:
                     lines.append(f"⚡️ RAM: {self.ram} MB")
@@ -86,7 +102,7 @@ class ServerStatus:
                 if self.balance:
                     lines.append(f"💰 Баланс: {self.balance} ₽")
 
-                return "\n".join(lines)
+                return "<br>".join(lines)  # <br> для HTML
 
             case ServerState.ERROR:
                 return "❌ Ошибка определения состояния"

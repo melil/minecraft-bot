@@ -61,49 +61,14 @@ async def players_count() -> int:
 
     return -1
 
-
 def clean_name(name: str) -> str:
     """Убирает ANSI escape-последовательности из имени"""
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', name).strip()
 
-#todo: migrate to html and after migrate to DB
-def format_player_name_md(name: str) -> str:
-    PLAYER_ID_MAP = {
-        "Trudovick": 78120051,
-        "PAPIN_TYZ": 505878676,
-        "orlan1211": 860938417,
-        "_zari_1": 451548653,
-        "_SoftEclipse_": 851242077,
-        "aziatov": 138349349,
-        "nice_korew25": 140821964,
-    }
-
-    user_id = PLAYER_ID_MAP.get(name)
-
-    if user_id:
-        # ВАЖНО: без escape_md
-        return f"[{escape_md(name)}](tg://user?id={user_id})"
-    else:
-        # А вот тут можно экранировать, если без ссылки
-        return escape_md(name)
-
-def escape_md(text: str) -> str:
-    # Минимум, который реально ломает Markdown
-    return (
-        text
-        .replace("_", r"\_")
-        .replace("[", r"\[")
-        .replace("]", r"\]")
-        .replace("(", r"\(")
-        .replace(")", r"\)")
-    )
-
-
 async def players_with_names_count() -> Tuple[int, int, List[str]]:
     """
-    Возвращает кортеж:
-    (текущее кол-во игроков, максимум, список имён (italic + tg-ссылки)).
+    Возвращает кортеж: (текущее кол-во игроков, максимум, список имён).
     Если ошибка, возвращает (-1, -1, []).
     """
     output = await run("/root/scripts/players.sh")
@@ -113,28 +78,21 @@ async def players_with_names_count() -> Tuple[int, int, List[str]]:
         return -1, -1, []
 
     match = re.search(r"There are (\d+) of a max of (\d+) players online", output)
-    if not match:
-        return -1, -1, []
+    if match:
+        current = int(match.group(1))
+        maximum = int(match.group(2))
 
-    current = int(match.group(1))
-    maximum = int(match.group(2))
+        # Получаем имена после двоеточия и очищаем
+        names_part = output.split(":", 1)[-1].strip()
+        names = [clean_name(name) for name in names_part.split(",") if name.strip()] if names_part else []
 
-    names_part = output.split(":", 1)[-1].strip()
+        # На случай, если сервер вернул 0, а имена есть
+        if current == 0 and names:
+            current = len(names)
 
-    raw_names = (
-        [clean_name(name) for name in names_part.split(",") if name.strip()]
-        if names_part
-        else []
-    )
+        return current, maximum, names
 
-    names = [format_player_name_md(name) for name in raw_names]
-
-    # если сервер вернул 0, но имена есть
-    if current == 0 and names:
-        current = len(names)
-
-    return current, maximum, names
-
+    return -1, -1, []
 
 
 async def save_and_stop() -> str:
