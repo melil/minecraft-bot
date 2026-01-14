@@ -79,10 +79,8 @@ def format_player_name_md(name: str) -> str:
     user_id = PLAYER_ID_MAP.get(name)
 
     if user_id:
-        # italic + ссылка на профиль
-        return f"_[_{name}_](tg://user?id={user_id})_"
+        return f"[{name}](tg://user?id={user_id})"
     else:
-        # просто italic, если айди нет
         return f"_{name}_"
 
 
