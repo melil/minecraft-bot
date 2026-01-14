@@ -37,7 +37,7 @@ class ServerStatus:
             case ServerState.READY:
                 lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
                 if self.names:
-                    lines.append(", ".join(self.names))
+                    lines.append(", ".join(f"_{name}_" for name in self.names))
 
 
                 return "\n".join(lines)
@@ -71,7 +71,7 @@ class ServerStatus:
                 if self.players >= 0:
                     lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
                     if self.names:
-                        lines.append(", ".join(self.names))
+                        lines.append(", ".join(f"_{name}_" for name in self.names))
 
                 lines.append("\n☁️ *VPS*:")
                 if self.ip:
