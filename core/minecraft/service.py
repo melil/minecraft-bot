@@ -81,8 +81,8 @@ def format_player_name_md(name: str) -> str:
         #"MedoeBpASSechnIK": 860938417
     }
 
-    user_id = PLAYER_ID_MAP.get(name)
     safe_name = escape_md(name)
+    user_id = PLAYER_ID_MAP.get(name)
 
     if user_id:
         return f"[{safe_name}](tg://user?id={user_id})"
