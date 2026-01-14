@@ -84,7 +84,7 @@ def is_admin(user_id: int) -> bool:
 
 def get_control_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопками управления сервером"""
-    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status")]]
+    keyboard = [[InlineKeyboardButton("📊 Статус", callback_data="status"),InlineKeyboardButton("💵 Пополнить", url="https://www.tbank.ru/cf/2dzkoyJFsJc")]]
 
     # Кнопки администратора (только для админов)
     if show_admin_buttons:
