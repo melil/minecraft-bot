@@ -143,12 +143,12 @@ async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Если Minecraft не активен
     if not status.state.BOOTING:
         text = ServerStatus.format_server_status(status)
-        await status_msg.edit_text(f"{text}\n🎮 Minecraft: не запущен")
+        await status_msg.edit_text(f"{text}\n🎮 Minecraft: не запущен", parse_mode="Markdown")
         return
 
     # Если Minecraft активен
     text = ServerStatus.format_server_status(status)
-    await status_msg.edit_text(text)
+    await status_msg.edit_text(text, parse_mode="Markdown")
 
 
 async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -227,7 +227,8 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
     text = ServerStatus.format_server_status(final_status)
     await msg.edit_text(
         text,
-        reply_markup=get_control_keyboard(True)
+        reply_markup=get_control_keyboard(True),
+        parse_mode="Markdown"
     )
 
 
@@ -272,7 +273,8 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = ServerStatus.format_server_status(final_status)
     await msg.edit_text(
         text,
-        reply_markup=get_control_keyboard(True)
+        reply_markup=get_control_keyboard(True),
+        parse_mode="Markdown"
     )
 
 
@@ -320,13 +322,15 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
         text = ServerStatus.format_server_status(final_status)
         await update.message.reply_text(
             f"📊 Статус после перезагрузки:\n{text}",
-            reply_markup=get_control_keyboard(True)
+            reply_markup=get_control_keyboard(True),
+            parse_mode="Markdown"
         )
     else:
         # Если операция заблокирована
         await msg.edit_text(
             "⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-            reply_markup=get_control_keyboard(True)
+            reply_markup=get_control_keyboard(True),
+            parse_mode="Markdown"
         )
 
 
