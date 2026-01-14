@@ -1,4 +1,7 @@
 # core/server/facade.py
+import asyncio
+import logging
+
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
@@ -13,9 +16,12 @@ from core.minecraft.service import (
 from core.ssh.client import is_available
 from core.api.regru import RegRuClient
 
+logger = logging.getLogger(__name__)
+
 class ServerFacade:
     def __init__(self, regru: RegRuClient):
         self.regru = regru
+        self._lock = asyncio.Lock()
 
     # ---------- HIGH LEVEL ----------
 
@@ -35,14 +41,36 @@ class ServerFacade:
         1. Корректно остановить Minecraft (scripts)
         2. Выключить VPS через API
         """
-        if await is_available():
-            await save_and_stop()
-
-        action_id = await self.regru.stop()
-        if not action_id:
+        # Проверяем блокировку
+        if self._lock.locked():
+            logger.warning("Операция stop заблокирована - уже выполняется другая операция")
             return ActionResult(None, "locked")
 
-        return ActionResult(action_id, "new")
+        async with self._lock:
+            try:
+                logger.info("Начало процедуры остановки сервера")
+
+                # Сохраняем и останавливаем Minecraft
+                if await is_available():
+                    logger.info("Minecraft доступен, сохраняю мир...")
+                    await save_and_stop()
+                else:
+                    logger.info("Minecraft не доступен, пропускаю сохранение")
+
+                # Выключаем VPS через API
+                logger.info("Отправляю команду на отключение VPS...")
+                action_id = await self.regru.stop()
+
+                if not action_id:
+                    logger.error("Не удалось получить action_id от API")
+                    return ActionResult(None, "locked")
+
+                logger.info(f"VPS отключение запущено, action_id: {action_id}")
+                return ActionResult(action_id, "new")
+
+            except Exception as e:
+                logger.error(f"Ошибка при остановке сервера: {e}")
+                return ActionResult(None, "error", str(e))
 
     async def reboot(self) -> ActionResult:
         """
