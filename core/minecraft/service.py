@@ -44,6 +44,29 @@ async def is_ready() -> bool:
 
     return await is_rcon_ready()
 
+async def players_count_and_names() -> tuple[int, list[str]]:
+    output = await run("/root/scripts/players.sh")
+    print(f"players output: {output}")
+    print(f"scriptDir: {SCRIPTS_DIR}")
+
+    if not output or "❌" in output:
+        return -1, []
+
+    # Попытка найти количество игроков и их имена
+    match = re.search(
+        r"There are (\d+) of a max of \d+ players online: (.+)", output
+    )
+    if match:
+        count = int(match.group(1))
+        # Разделяем ники по запятой и убираем лишние пробелы
+        names = [name.strip() for name in match.group(2).split(",")]
+        return count, names
+
+    # Обработка случая с 0 игроками
+    if "There are 0" in output:
+        return 0, []
+
+    return -1, []
 
 async def players_count() -> int:
     output = await run("/root/scripts/players.sh")

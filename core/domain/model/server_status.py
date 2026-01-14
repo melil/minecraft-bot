@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 class ServerStatus:
     state: ServerState
     players: int = -1
+    names: list[str] = None
     ip: Optional[str] = None,
     minecraft_active: bool = False,
     balance: Optional[str] = None,
@@ -65,6 +66,9 @@ class ServerStatus:
 
                 if self.players >= 0:
                     lines.append(f"👥 Игроков онлайн: {self.players}")
+
+                if self.names:
+                        lines.append(f"👥 Список: {', '.join(self.names)}")
 
                 lines.append("\n☁️ *VPS*:")
                 if self.ip:

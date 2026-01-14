@@ -7,6 +7,7 @@ from core.ssh.client import is_available
 from core.minecraft.service import (
     is_ready,
     players_count,
+    players_count_and_names,
     save_and_stop,
     save_and_prepare_reboot
 )
@@ -77,13 +78,14 @@ class ServerFacade:
 
             # VPS есть, SSH есть → проверяем Minecraft
             if await is_ready():
-                players = await players_count()
+                players, names = await players_count_and_names()
                 print(f"players: {players}")
                 info = await self.regru.get_server_info()
 
                 return ServerStatus(
                     state=ServerState.READY,
                     players=players,
+                    names = names,
                     ip=info["reglet"]["ip"],
                     ram = info["reglet"]["memory"],
                     disk = f"{info['reglet']['disk']} / {info['reglet']['image']['size_gigabytes']}",
