@@ -14,7 +14,10 @@ class ServerStatus:
     players: int = -1
     ip: Optional[str] = None,
     minecraft_active: bool = False,
-    balance: Optional[str] = None
+    balance: Optional[str] = None,
+    ram: Optional[str] = None,
+    disk: Optional[str] = None,
+
 
     def format_server_status(self: 'ServerStatus') -> str:  # Или укажи как строку
         match self.state:
@@ -31,19 +34,26 @@ class ServerStatus:
                 return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
 
             case ServerState.READY:
-                lines = ["☁️ VPS запущен"]
-
-                if self.players >= 0:
-                    lines.append(f"👥 Игроков онлайн: {self.players}")
+                lines = ["☁️ VPS запущен", "\n"]
 
                 if self.minecraft_active:
                     lines.append(f"🎮 Minecraft активен")
 
+                if self.players >= 0:
+                    lines.append(f"👥 Игроков онлайн: {self.players}")
+
+                lines.append(f"\n ☁️ VPS Info:")
                 if self.ip:
                     lines.append(f"🌍 IP: `{self.ip}`")
 
+                if self.ram:
+                    lines.append(f"⚡️ RAM: `{self.ram}`")
+
+                if self.disk:
+                    lines.append(f"💾 Disk: `{self.ram}`")
+
                 if self.balance:
-                    lines.append(f"💰 Баланс VPS: {self.balance} ₽")
+                    lines.append(f"💰 Баланс: {self.balance} ₽")
 
                 return "\n".join(lines)
 
