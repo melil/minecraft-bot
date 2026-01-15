@@ -1,7 +1,7 @@
 # test_raw_api.py
 import asyncio
 import aiohttp
-from core.config import TIMEWEB_TOKEN, MINECRAFT_SERVER_ID
+from core.config import REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID
 
 
 async def test_api():
@@ -15,7 +15,7 @@ async def test_api():
     ]
 
     headers = {
-        "Authorization": f"Bearer {TIMEWEB_TOKEN}",
+        "Authorization": f"Bearer {REGRU_CLOUD_TOKEN}",
         "Content-Type": "application/json"
     }
 

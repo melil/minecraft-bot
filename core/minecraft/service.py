@@ -34,10 +34,9 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
     Получает список игроков через RCON
     """
     try:
-        # Исправленная команда с правильным путем
+        # Команда с абсолютным путем к server.properties
         result = await client.execute(
-            f"cd {MINECRAFT_DIR} && "
-            f"RCON_PASS=$(grep 'rcon.password' server.properties | cut -d= -f2 | tr -d '\\r\\n') && "
+            f"RCON_PASS=$(grep 'rcon.password' {MINECRAFT_DIR}/server.properties | cut -d= -f2 | tr -d '\\r\\n') && "
             f"mcrcon -H 127.0.0.1 -P 25575 -p \"$RCON_PASS\" list 2>&1",
             timeout=10
         )
