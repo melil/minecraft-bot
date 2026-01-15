@@ -14,37 +14,37 @@ logger = logging.getLogger(__name__)
 
 class ServerFacade:
     """
-    Фасад для управления сервером.
-    Объединяет работу с VPS API и Minecraft сервером.
+    Фасад для управления сервером REG.RU Cloud
     """
 
     def __init__(self, api_client: RegRuClient):
         self.api = api_client
-        self._status_cache: Optional[ServerStatus] = None
-        self._cache_time: Optional[datetime] = None
-        self._cache_ttl = 10  # секунд
 
     async def status(self) -> ServerStatus:
         """
         Получает полный статус сервера (VPS + Minecraft)
         """
         try:
-            # Получаем статус VPS
-            vps_data = await self.api.get_server_info()
+            # Получаем информацию о сервере
+            server_data = await self.api.get_server_info()
 
+            # Маппинг состояний REG.RU -> внутренние состояния
             state_map = {
                 "off": ServerState.OFF,
+                "stopped": ServerState.OFF,
                 "starting": ServerState.STARTING,
                 "on": ServerState.BOOTING,
+                "active": ServerState.BOOTING,
             }
 
-            vps_state = state_map.get(vps_data.get("state", "off"), ServerState.OFF)
+            vps_status = server_data.get("status", "off").lower()
+            vps_state = state_map.get(vps_status, ServerState.OFF)
 
             # Базовый статус
             status = ServerStatus(
                 state=vps_state,
-                ip=vps_data.get("main_ipv4"),
-                uptime=vps_data.get("uptime")
+                ip=server_data.get("ip"),
+                uptime=None  # REG.RU API не предоставляет uptime напрямую
             )
 
             # Если VPS не работает - возвращаем сразу
@@ -74,35 +74,59 @@ class ServerFacade:
             logger.info("Запуск VPS сервера")
             result = await self.api.start_server()
 
-            if result.get("state") == "starting":
-                return ActionResult(status="success", message="Сервер запускается")
-            elif result.get("state") == "on":
-                return ActionResult(status="success", message="Сервер уже запущен")
+            # Проверка на блокировку
+            if result.get("status") == "locked":
+                return ActionResult(
+                    status="locked",
+                    message="Сервер заблокирован (выполняется другая операция)"
+                )
+
+            # Проверяем, что действие создано
+            action = result.get("action")
+            if action:
+                action_id = action.get("id")
+                logger.info(f"Действие запуска создано: {action_id}")
+                return ActionResult(
+                    status="success",
+                    message="Сервер запускается",
+                    action_id=action_id
+                )
             else:
-                return ActionResult(status="locked", message="Сервер выполняет другую операцию")
+                return ActionResult(
+                    status="error",
+                    message="Не удалось создать действие запуска"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка запуска сервера: {e}")
             return ActionResult(status="error", message=str(e))
 
     async def stop(self) -> ActionResult:
-        """Останавливает VPS сервер (с сохранением мира Minecraft)"""
+        """Останавливает VPS сервер"""
         try:
             logger.info("Остановка VPS сервера")
-
-            # Проверяем, запущен ли Minecraft
-            status = await self.status()
-
-            if status.state == ServerState.READY and status.minecraft_active:
-                logger.info("Выполняю save-all перед остановкой")
-                # Сохранение происходит автоматически через systemd ExecStop
-
             result = await self.api.stop_server()
 
-            if result.get("state") == "stopping" or result.get("state") == "off":
-                return ActionResult(status="success", message="Сервер останавливается")
+            if result.get("status") == "locked":
+                return ActionResult(
+                    status="locked",
+                    message="Сервер заблокирован (выполняется другая операция)"
+                )
+
+            action = result.get("action")
+            if action:
+                action_id = action.get("id")
+                logger.info(f"Действие остановки создано: {action_id}")
+                return ActionResult(
+                    status="success",
+                    message="Сервер останавливается",
+                    action_id=action_id
+                )
             else:
-                return ActionResult(status="locked", message="Сервер выполняет другую операцию")
+                return ActionResult(
+                    status="error",
+                    message="Не удалось создать действие остановки"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка остановки сервера: {e}")
@@ -114,10 +138,26 @@ class ServerFacade:
             logger.info("Перезагрузка VPS сервера")
             result = await self.api.reboot_server()
 
-            if result.get("state") in ["rebooting", "starting"]:
-                return ActionResult(status="success", message="Сервер перезагружается")
+            if result.get("status") == "locked":
+                return ActionResult(
+                    status="locked",
+                    message="Сервер заблокирован (выполняется другая операция)"
+                )
+
+            action = result.get("action")
+            if action:
+                action_id = action.get("id")
+                logger.info(f"Действие перезагрузки создано: {action_id}")
+                return ActionResult(
+                    status="success",
+                    message="Сервер перезагружается",
+                    action_id=action_id
+                )
             else:
-                return ActionResult(status="locked", message="Сервер выполняет другую операцию")
+                return ActionResult(
+                    status="error",
+                    message="Не удалось создать действие перезагрузки"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка перезагрузки сервера: {e}")

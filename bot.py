@@ -11,14 +11,14 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
-from core.config import TELEGRAM_TOKEN, TIMEWEB_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
+from core.config import TELEGRAM_TOKEN, REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
 from core.server.facade import ServerFacade
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
 from core.api.regru import RegRuClient
 
-reg_ru_api = RegRuClient(TIMEWEB_TOKEN, MINECRAFT_SERVER_ID)
+reg_ru_api = RegRuClient(REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID)
 facade = ServerFacade(reg_ru_api)
 
 ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"

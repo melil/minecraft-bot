@@ -1,125 +1,217 @@
-# core/api/regru.py
 import aiohttp
-from typing import Optional
 import logging
+from typing import Optional
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 logger = logging.getLogger(__name__)
 
+
 class RegRuClient:
-    BASE_URL = "https://api.cloudvps.reg.ru/v1"
+    """
+    Клиент для работы с API REG.RU Cloud VPS
+    Документация: https://developers.cloudvps.reg.ru/
+    """
 
-    def __init__(self, token: str, reglet_id: int):
+    def __init__(self, token: str, server_id: str):
         self.token = token
-        self.reglet_id = reglet_id
-
-    # ---------- low-level ----------
-
-    @property
-    def headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
+        self.server_id = server_id
+        self.base_url = "https://api.cloudvps.reg.ru/v1"
+        self.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
         }
 
-    async def _post_action(self, action_type: str) -> dict:
+    async def _request(self, method: str, url: str, json_data: Optional[dict] = None) -> dict:
         """
-        start / stop / reboot
+        Выполняет HTTP запрос к API
         """
-        url = f"{self.BASE_URL}/reglets/{self.reglet_id}/actions"
-        payload = {"type": action_type}
-        print(url)
-        print(f"token: {self.token}")
-        print(f"payload: {payload}")
-
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self.headers, json=payload) as resp:
-                data = await resp.json()
+            try:
+                logger.debug(f"API Request: {method} {url}")
+                if json_data:
+                    logger.debug(f"Request body: {json_data}")
 
-                if resp.status == 409:
-                    # RESOURCE_LOCKED
-                    return {
-                        "status": "locked",
-                        "raw": data,
-                    }
+                async with session.request(
+                        method,
+                        url,
+                        headers=self.headers,
+                        json=json_data,
+                        timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    response_text = await response.text()
 
-                resp.raise_for_status()
-                print(f"data: {data}")
-                return data
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.debug(f"API Response: {data}")
+                        return data
+                    else:
+                        logger.error(f"API Error {response.status}: {response_text}")
+                        return {"error": response_text, "status": response.status}
 
-    async def _get_action(self, action_id: str) -> dict:
-        url = f"{self.BASE_URL}/actions/{action_id}"
-        print(url)
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=self.headers) as resp:
-                resp.raise_for_status()
-                return await resp.json()
-
-    # ---------- public: actions ----------
-
-    async def start(self) -> Optional[str]:
-        return await self._run_action("start")
-
-    async def stop(self) -> Optional[str]:
-        return await self._run_action("stop")
-
-    async def reboot(self) -> Optional[str]:
-        return await self._run_action("reboot")
-
-    async def _run_action(self, action_type: str) -> Optional[str]:
-        """
-        Returns action_id or None if locked
-        """
-        result = await self._post_action(action_type)
-
-        if result.get("status") == "locked":
-            return None
-
-        return result["action"]["id"]
-
-    async def get_action_status(self, action_id: str) -> str:
-        """
-        new | in-progress | errored | completed
-        """
-        data = await self._get_action(action_id)
-        return data["action"]["status"]
-
-    # ---------- public: server info ----------
+            except Exception as e:
+                logger.error(f"API Request failed: {e}")
+                raise
 
     async def get_server_info(self) -> dict:
-        url = f"{self.BASE_URL}/reglets/{self.reglet_id}"
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=self.headers) as resp:
-                resp.raise_for_status()
-                return await resp.json()
-
-    async def get_server_state(self) -> str:
         """
-        on / off
+        Получает информацию о сервере (reglet)
+
+        Returns:
+            {
+                "reglet": {
+                    "id": 5827361,
+                    "name": "Minecraft-server",
+                    "status": "off" | "on" | "stopping" | "starting",
+                    "ip": "95.163.227.185",
+                    "memory": 12288,
+                    "vcpus": 4,
+                    "disk": 20,
+                    "disk_usage": 0.0,
+                    ...
+                }
+            }
         """
-        info = await self.get_server_info()
-        return info["reglet"]["status"]
+        url = f"{self.base_url}/reglets/{self.server_id}"
+        response = await self._request("GET", url)
+        return response.get("reglet", {})
 
-    # ---------- billing ----------
-
-    async def get_balance(self) -> dict:
-        url = f"{self.BASE_URL}/balance_data"
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=self.headers) as resp:
-                resp.raise_for_status()
-                return await resp.json()
-
-    async def get_balance_string(self) -> str:
+    async def get_balance_info(self) -> dict:
         """
-        on / off
-        """
-        balance = await self.get_balance()
-        return balance["balance_data"]["balance"]
+        Получает информацию о балансе
 
+        Returns:
+            {
+                "balance_data": {
+                    "balance": 460.43,
+                    "days_left": 52,
+                    "hourly_cost": 0.36721,
+                    "monthly_cost": 246.77,
+                    ...
+                }
+            }
+        """
+        url = f"{self.base_url}/balance_data"
+        response = await self._request("GET", url)
+        return response.get("balance_data", {})
+
+    async def _execute_action(self, action_type: str) -> dict:
+        """
+        Выполняет действие с сервером
+
+        Args:
+            action_type: "start", "stop", "reboot"
+
+        Returns:
+            {
+                "action": {
+                    "id": "chain_14855457",
+                    "type": "start",
+                    "status": "new" | "in-progress" | "completed" | "errored",
+                    "created_at": "2026-01-12 04:33:05",
+                    "completed_at": null,
+                    ...
+                }
+            }
+
+            или при блокировке:
+            {
+                "code": "RESOURCE_LOCKED",
+                "message": "resource locked"
+            }
+        """
+        url = f"{self.base_url}/reglets/{self.server_id}/actions"
+        json_data = {"type": action_type}
+
+        response = await self._request("POST", url, json_data)
+
+        # Проверка на блокировку ресурса
+        if response.get("code") == "RESOURCE_LOCKED":
+            logger.warning(f"Server {self.server_id} is locked")
+            return {"status": "locked", "message": "resource locked"}
+
+        return response
+
+    async def start_server(self) -> dict:
+        """
+        Запускает сервер
+
+        Returns:
+            {"action": {...}} или {"status": "locked"}
+        """
+        logger.info(f"Starting server {self.server_id}")
+        return await self._execute_action("start")
+
+    async def stop_server(self) -> dict:
+        """
+        Останавливает сервер
+
+        Returns:
+            {"action": {...}} или {"status": "locked"}
+        """
+        logger.info(f"Stopping server {self.server_id}")
+        return await self._execute_action("stop")
+
+    async def reboot_server(self) -> dict:
+        """
+        Перезагружает сервер
+
+        Returns:
+            {"action": {...}} или {"status": "locked"}
+        """
+        logger.info(f"Rebooting server {self.server_id}")
+        return await self._execute_action("reboot")
+
+    async def get_action_status(self, action_id: str) -> dict:
+        """
+        Проверяет статус выполнения действия
+
+        Args:
+            action_id: ID действия (например "chain_14855435")
+
+        Returns:
+            {
+                "action": {
+                    "id": "chain_14855435",
+                    "status": "new" | "in-progress" | "completed" | "errored",
+                    "type": "StopServerUseCase",
+                    "completed_at": "2026-01-12 08:37:12" | null,
+                    ...
+                }
+            }
+        """
+        url = f"{self.base_url}/actions/{action_id}"
+        return await self._request("GET", url)
+
+    async def wait_for_action(self, action_id: str, timeout: int = 300, check_interval: int = 5) -> bool:
+        """
+        Ожидает завершения действия
+
+        Args:
+            action_id: ID действия
+            timeout: максимальное время ожидания в секундах
+            check_interval: интервал проверки в секундах
+
+        Returns:
+            True если действие завершено успешно, False иначе
+        """
+        import asyncio
+
+        elapsed = 0
+        while elapsed < timeout:
+            response = await self.get_action_status(action_id)
+            action = response.get("action", {})
+            status = action.get("status")
+
+            logger.debug(f"Action {action_id} status: {status}")
+
+            if status == "completed":
+                logger.info(f"Action {action_id} completed successfully")
+                return True
+            elif status == "errored":
+                logger.error(f"Action {action_id} failed")
+                return False
+
+            await asyncio.sleep(check_interval)
+            elapsed += check_interval
+
+        logger.warning(f"Action {action_id} timed out after {timeout}s")
+        return False

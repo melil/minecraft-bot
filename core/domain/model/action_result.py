@@ -1,8 +1,10 @@
-# core/domain/model/action_result.py
 from dataclasses import dataclass
 from typing import Optional
 
+
 @dataclass
 class ActionResult:
-    action_id: Optional[str] | None
-    status: str  # new | in-progress | completed | errored | locked
+    """Результат выполнения действия"""
+    status: str  # "success", "error", "locked"
+    message: str
+    action_id: Optional[str] = None  # ID действия в REG.RU API
