@@ -7,6 +7,9 @@ from core.ssh.client import SSHClient
 
 logger = logging.getLogger(__name__)
 
+# Константа с путем к Minecraft (на основе ваших данных)
+MINECRAFT_DIR = "/root/freshcraft_industrial_server"
+
 
 async def is_ready(ssh_config: dict) -> bool:
     """
@@ -14,7 +17,10 @@ async def is_ready(ssh_config: dict) -> bool:
     """
     try:
         client = SSHClient(**ssh_config)
-        result = await client.execute("systemctl is-active minecraft.service || echo 'inactive'", timeout=10)
+        result = await client.execute(
+            "systemctl is-active minecraft.service 2>/dev/null || echo 'inactive'",
+            timeout=10
+        )
         is_active = result.strip() == "active"
         logger.debug(f"Minecraft systemd status: {result.strip()}")
         return is_active
@@ -23,35 +29,40 @@ async def is_ready(ssh_config: dict) -> bool:
         return False
 
 
-async def get_players_via_rcon(client: SSHClient) -> Tuple[int, int, Optional[List[str]]]:
+async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Optional[int], Optional[List[str]]]:
     """
     Получает список игроков через RCON
     """
     try:
-        # Пробуем mcrcon
+        # Получаем пароль RCON из конфига
+        password_cmd = f"grep 'rcon.password' {MINECRAFT_DIR}/server.properties 2>/dev/null | cut -d= -f2 | tr -d '\\r\\n' || echo 'minecraft'"
+
         result = await client.execute(
-            "mcrcon -H 127.0.0.1 -P 25575 -p $(grep 'rcon.password' /root/freshcraft_industrial_server/server.properties | cut -d= -f2 || echo 'minecraft') list 2>/dev/null",
+            f"RCON_PASS=$({password_cmd}) && "
+            f"mcrcon -H 127.0.0.1 -P 25575 -p \"$RCON_PASS\" list 2>/dev/null",
             timeout=10
         )
 
         if "There are" in result:
-            # Парсим: "There are 2 of a max of 20 players online: Steve, Alex"
             lines = result.strip().split('\n')
             for line in lines:
                 if "There are" in line:
+                    # Паттерн: "There are 2 of a max of 20 players online: Steve, Alex"
                     match = re.search(r'There are (\d+) of a max of (\d+) players online', line)
                     if match:
                         current = int(match.group(1))
                         maximum = int(match.group(2))
 
-                        # Ищем список имен после двоеточия
                         if ':' in line and current > 0:
                             names_part = line.split(':', 1)[1].strip()
                             names = [n.strip() for n in names_part.split(',') if n.strip()]
+                            logger.info(f"RCON: {current}/{maximum} игроков: {names}")
                             return current, maximum, names
 
+                        logger.info(f"RCON: {current}/{maximum} игроков (без имен)")
                         return current, maximum, None
 
+        logger.debug("RCON: нет данных")
         return None, None, None
 
     except Exception as e:
@@ -64,10 +75,10 @@ async def get_players_via_logs(client: SSHClient) -> Tuple[int, int, Optional[Li
     Получает список игроков из логов journalctl
     """
     try:
-        # Получаем события входа/выхода за последний час
+        # Получаем события входа/выхода за последние 3 часа
         result = await client.execute(
-            "journalctl -u minecraft.service --since '1 hour ago' --no-pager 2>/dev/null | "
-            "grep -E 'joined the game|left the game' || echo ''",
+            "journalctl -u minecraft.service --since '3 hours ago' --no-pager 2>/dev/null | "
+            "grep -iE 'joined the game|left the game' | tail -100 || echo ''",
             timeout=15
         )
 
@@ -75,22 +86,32 @@ async def get_players_via_logs(client: SSHClient) -> Tuple[int, int, Optional[Li
 
         if result:
             for line in result.split('\n'):
-                # Паттерн: "[14:30:25] [Server thread/INFO]: Steve joined the game"
+                # Паттерны для Forge/Vanilla:
+                # [12:34:56] [Server thread/INFO]: Steve joined the game
+                # [12:34:56] [Server thread/INFO] [minecraft/DedicatedServer]: Steve joined the game
+
                 if 'joined the game' in line.lower():
                     # Ищем имя перед "joined"
                     match = re.search(r':\s*(\w+)\s+joined the game', line, re.IGNORECASE)
                     if match:
                         player_name = match.group(1)
                         online_players.add(player_name)
+                        logger.debug(f"Игрок вошел: {player_name}")
 
                 elif 'left the game' in line.lower():
                     match = re.search(r':\s*(\w+)\s+left the game', line, re.IGNORECASE)
                     if match:
                         player_name = match.group(1)
                         online_players.discard(player_name)
+                        logger.debug(f"Игрок вышел: {player_name}")
 
         count = len(online_players)
         names = sorted(list(online_players)) if online_players else None
+
+        if count > 0:
+            logger.info(f"Логи: {count} игроков онлайн: {names}")
+        else:
+            logger.debug("Логи: игроков не найдено")
 
         return count, 20, names
 
@@ -102,6 +123,8 @@ async def get_players_via_logs(client: SSHClient) -> Tuple[int, int, Optional[Li
 async def get_players_via_connections(client: SSHClient) -> int:
     """
     Подсчитывает игроков по активным TCP соединениям к порту 25565
+
+    Самый надежный метод, работает всегда
     """
     try:
         result = await client.execute(
@@ -110,6 +133,12 @@ async def get_players_via_connections(client: SSHClient) -> int:
         )
 
         count = int(result.strip()) if result.strip().isdigit() else 0
+
+        if count > 0:
+            logger.info(f"TCP: {count} активных соединений")
+        else:
+            logger.debug("TCP: нет активных соединений")
+
         return count
 
     except Exception as e:
@@ -120,6 +149,11 @@ async def get_players_via_connections(client: SSHClient) -> int:
 async def players_with_names_count(ssh_config: dict) -> Tuple[int, int, Optional[List[str]]]:
     """
     Получает количество игроков и их имена используя несколько методов
+
+    Приоритет методов:
+    1. RCON (точный, с именами)
+    2. Логи (достаточно точный, с именами)
+    3. TCP соединения (точный счет, без имен)
     """
     try:
         client = SSHClient(**ssh_config)
@@ -129,7 +163,6 @@ async def players_with_names_count(ssh_config: dict) -> Tuple[int, int, Optional
         players, max_players, names = await get_players_via_rcon(client)
 
         if players is not None:
-            logger.debug(f"✅ RCON: {players}/{max_players} игроков, имена: {names}")
             return players, max_players, names
 
         # Метод 2: Логи journalctl
@@ -137,19 +170,18 @@ async def players_with_names_count(ssh_config: dict) -> Tuple[int, int, Optional
         players, max_players, names = await get_players_via_logs(client)
 
         if players > 0 or names:
-            logger.debug(f"✅ Логи: {players}/{max_players} игроков, имена: {names}")
             return players, max_players, names
 
-        # Метод 3: TCP соединения (без имен)
-        logger.debug("Попытка подсчитать TCP соединения...")
+        # Метод 3: TCP соединения (fallback, всегда работает)
+        logger.debug("Использую TCP соединения...")
         players = await get_players_via_connections(client)
 
         if players > 0:
-            logger.debug(f"✅ TCP: {players} соединений")
+            logger.info(f"✅ Определено {players} игроков через TCP")
             return players, 20, None
 
         # Если все методы вернули 0
-        logger.debug("Все методы вернули 0 игроков")
+        logger.debug("Все методы показали 0 игроков")
         return 0, 20, None
 
     except Exception as e:
@@ -168,6 +200,14 @@ async def players_count(ssh_config: dict) -> int:
 async def get_minecraft_status(ssh_config: dict) -> dict:
     """
     Получает полный статус Minecraft сервера
+
+    Returns:
+        {
+            'active': bool,           # Запущен ли сервер
+            'players': int,           # Количество игроков
+            'max_players': int,       # Максимум игроков
+            'names': List[str]|None   # Список имен (если доступно)
+        }
     """
     # Проверяем, запущен ли сервер
     active = await is_ready(ssh_config)
