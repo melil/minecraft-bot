@@ -1,6 +1,6 @@
 # core/domain/model/server_status.py
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List
 from html import escape
 
 from core.domain.model.server_state import ServerState
@@ -28,85 +28,75 @@ def format_player_html(name: str) -> str:
         return f'<a href="tg://user?id={user_id}">{safe_name}</a>'
     return safe_name
 
+
 @dataclass
 class ServerStatus:
+    """Состояние сервера"""
     state: ServerState
-    players: int = -1,
-    max_players: int = -1,
-    names: list[str] = None
-    ip: Optional[str] = None,
-    minecraft_active: bool = False,
-    balance: Optional[str] = None,
-    ram: Optional[str] = None,
-    disk: Optional[str] = None,
+    ip: Optional[str] = None
+    uptime: Optional[str] = None
+    minecraft_active: bool = False
+    players: int = 0
+    max_players: int = 20
+    names: Optional[List[str]] = None
 
-    def format_players(self: 'ServerStatus') -> str:
-        match self.state:
-            case ServerState.OFF:
-                return "⛔ Сервер выключен"
+    @staticmethod
+    def format_server_status(status: 'ServerStatus') -> str:
+        """Форматирует статус сервера для отображения"""
+        state_emoji = {
+            ServerState.OFF: "⚫",
+            ServerState.STARTING: "🟡",
+            ServerState.BOOTING: "🟠",
+            ServerState.READY: "🟢"
+        }
 
-            case ServerState.STARTING:
-                return "☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается"
+        state_text = {
+            ServerState.OFF: "Выключен",
+            ServerState.STARTING: "Запускается",
+            ServerState.BOOTING: "VPS включен",
+            ServerState.READY: "Работает"
+        }
 
-            case ServerState.BOOTING:
-                return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
+        emoji = state_emoji.get(status.state, "⚪")
+        text = state_text.get(status.state, "Неизвестно")
 
-            case ServerState.READY:
-                lines = [f"👥 Игроков онлайн: {self.players} / {self.max_players}"]
-                if self.names:
-                    player_links = [format_player_html(name) for name in self.names]
-                    lines.append(", ".join(player_links))
-                return "\n".join(lines)  # <- используем \n, НЕ <br>
+        result = f"{emoji} <b>VPS Status:</b> {text}\n"
 
-            case ServerState.ERROR:
-                return "❌ Ошибка определения состояния"
+        if status.ip:
+            result += f"🌐 <b>IP:</b> <code>{status.ip}</code>\n"
 
-            case _:
-                return "❓ Неизвестное состояние"
+        if status.uptime:
+            result += f"⏱️ <b>Uptime:</b> {status.uptime}\n"
+        else:
+            result += f"⏱️ <b>Uptime:</b> N/A\n"
 
-    def format_server_status(self: 'ServerStatus') -> str:
-        match self.state:
-            case ServerState.OFF:
-                return "⛔ Сервер выключен"
+        if status.state == ServerState.READY and status.minecraft_active:
+            result += f"\n🎮 <b>Minecraft:</b> Активен\n"
+            result += f"👥 <b>Игроков:</b> {status.players}/{status.max_players}"
 
-            case ServerState.STARTING:
-                return "☁️ VPS запускается\n🎮 Minecraft: ⏳ ожидается"
+            if status.names and len(status.names) > 0:
+                result += f"\n📋 <b>Онлайн:</b> {', '.join(status.names)}"
+        else:
+            result += f"\n🎮 <b>Minecraft:</b> Не запущен"
 
-            case ServerState.BOOTING:
-                return "☁️ VPS: ✅ запущен\n🎮 Minecraft загружается"
+        return result
 
-            case ServerState.READY:
-                lines = ["⛏️ <b>Lame Horse Minecraft Server</b>"]
+    @staticmethod
+    def format_players(status: 'ServerStatus') -> str:
+        """Форматирует информацию об игроках"""
+        if status.state != ServerState.READY or not status.minecraft_active:
+            return "🎮 Сервер не запущен"
 
-                if self.minecraft_active:
-                    lines.append("🟢 Сервер активен")
+        result = f"👥 <b>Игроков онлайн:</b> {status.players}/{status.max_players}\n"
 
-                if self.ip:
-                    lines.append(f"🌍 Connect: <code>{escape(self.ip)}</code>")
+        if status.names and len(status.names) > 0:
+            result += f"\n📋 <b>Список игроков:</b>\n"
+            for i, name in enumerate(status.names, 1):
+                result += f"{i}. {name}\n"
+        else:
+            result += "\n🚫 Никого нет онлайн"
 
-                if self.players >= 0:
-                    lines.append(f"👥 Игроков онлайн: {self.players} / {self.max_players}")
-                    if self.names:
-                        player_links = [format_player_html(name) for name in self.names]
-                        lines.append(", ".join(player_links))
+        if status.ip:
+            result += f"\n🌐 <b>IP сервера:</b> <code>{status.ip}</code>"
 
-                lines.append(" ")
-                lines.append("☁️ <b>VPS</b>:")
-
-
-                if self.ram:
-                    lines.append(f"⚡️ RAM: {self.ram} MB")
-
-                if self.disk:
-                    lines.append(f"💾 Disk: {self.disk} GB")
-
-                if self.balance:
-                    lines.append(f"💰 Баланс: {self.balance} ₽")
-
-                return "\n".join(lines)
-
-            case ServerState.ERROR:
-                return "❌ Ошибка определения состояния"
-
-            case _:
-                return "❓ Неизвестное состояние"
+        return result
