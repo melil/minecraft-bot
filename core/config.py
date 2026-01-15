@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 
+# Загружаем .env файл
 load_dotenv()
 
 # Telegram
@@ -10,23 +11,77 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TIMEWEB_TOKEN = os.getenv("TIMEWEB_TOKEN")
 MINECRAFT_SERVER_ID = os.getenv("MINECRAFT_SERVER_ID")
 
-# SSH Configuration
+# SSH Configuration - поддержка двух форматов
+MINECRAFT_SERVER_SSH_STRING = os.getenv("MINECRAFT_SERVER_SSH")
+
+if MINECRAFT_SERVER_SSH_STRING:
+    # Формат 1: "user@host:port" или "user@host"
+    try:
+        if "@" in MINECRAFT_SERVER_SSH_STRING:
+            ssh_parts = MINECRAFT_SERVER_SSH_STRING.split("@")
+            ssh_user = ssh_parts[0].strip()
+            ssh_host_port = ssh_parts[1].strip().split(":")
+            ssh_host = ssh_host_port[0].strip()
+            ssh_port = int(ssh_host_port[1]) if len(ssh_host_port) > 1 else 22
+        else:
+            # Если только host указан
+            ssh_host = MINECRAFT_SERVER_SSH_STRING.strip()
+            ssh_user = "root"
+            ssh_port = 22
+    except Exception as e:
+        raise ValueError(
+            f"Неверный формат MINECRAFT_SERVER_SSH: {MINECRAFT_SERVER_SSH_STRING}. Ожидается: user@host:port")
+else:
+    # Формат 2: отдельные переменные
+    ssh_host = os.getenv("MINECRAFT_SERVER_HOST", "").strip()
+    ssh_user = os.getenv("MINECRAFT_SERVER_USER", "root").strip()
+    ssh_port_str = os.getenv("MINECRAFT_SERVER_PORT", "22").strip()
+
+    try:
+        ssh_port = int(ssh_port_str)
+    except ValueError:
+        ssh_port = 22
+
+# SSH конфигурация как словарь
 MINECRAFT_SERVER_SSH = {
-    "host": os.getenv("MINECRAFT_SERVER_HOST", "95.163.227.185"),
-    "user": os.getenv("MINECRAFT_SERVER_USER", "root"),
-    "port": int(os.getenv("MINECRAFT_SERVER_PORT", "22")),
-    "key_file": os.getenv("MINECRAFT_SERVER_KEY_FILE")  # Опционально
+    "host": ssh_host,
+    "user": ssh_user,
+    "port": ssh_port,
+    "key_file": os.getenv("MINECRAFT_SERVER_KEY_FILE")
 }
 
 # Валидация
-if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN не установлен в .env")
+errors = []
 
-if not TIMEWEB_TOKEN:
-    raise ValueError("TIMEWEB_TOKEN не установлен в .env")
+if not TELEGRAM_TOKEN or TELEGRAM_TOKEN.strip() == "":
+    errors.append("TELEGRAM_TOKEN не установлен")
 
-if not MINECRAFT_SERVER_ID:
-    raise ValueError("MINECRAFT_SERVER_ID не установлен в .env")
+if not TIMEWEB_TOKEN or TIMEWEB_TOKEN.strip() == "":
+    errors.append("TIMEWEB_TOKEN не установлен")
 
-if not MINECRAFT_SERVER_SSH["host"] or MINECRAFT_SERVER_SSH["host"] == "95.163.227.185":
-    raise ValueError("MINECRAFT_SERVER_HOST не установлен в .env")
+if not MINECRAFT_SERVER_ID or MINECRAFT_SERVER_ID.strip() == "":
+    errors.append("MINECRAFT_SERVER_ID не установлен")
+
+if not ssh_host or ssh_host == "":
+    errors.append(
+        "SSH конфигурация не установлена. Добавьте:\n"
+        "  MINECRAFT_SERVER_SSH=root@95.163.227.185:22\n"
+        "  или\n"
+        "  MINECRAFT_SERVER_HOST=95.163.227.185"
+    )
+
+if errors:
+    error_message = "❌ Ошибки в .env файле:\n" + "\n".join(f"  • {e}" for e in errors)
+    raise ValueError(error_message)
+
+# Успешная загрузка - выводим информацию
+print("=" * 60)
+print("✅ Конфигурация успешно загружена")
+print("=" * 60)
+print(f"📡 Telegram Bot: настроен")
+print(f"☁️  TimeWeb API: настроен")
+print(f"🖥️  Server ID: {MINECRAFT_SERVER_ID}")
+print(f"🔐 SSH: {MINECRAFT_SERVER_SSH['user']}@{MINECRAFT_SERVER_SSH['host']}:{MINECRAFT_SERVER_SSH['port']}")
+if MINECRAFT_SERVER_SSH['key_file']:
+    print(f"🔑 SSH Key: {MINECRAFT_SERVER_SSH['key_file']}")
+print("=" * 60)
