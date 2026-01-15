@@ -31,13 +31,19 @@ async def is_ready(ssh_config: dict) -> bool:
 
 
 async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Optional[int], Optional[List[str]]]:
+    """
+    Получает список игроков через RCON
+    """
     try:
+        # Используем хардкод пароля (можно вынести в конфиг)
+        RCON_PASSWORD = "SuperPassword228"
+
         result = await client.execute(
-            f"mcrcon -H 127.0.0.1 -P 25575 -p '{MINECRAFT_RCON_PASSWORD}' list 2>&1",
+            f"mcrcon -H 127.0.0.1 -P 25575 -p '{RCON_PASSWORD}' list 2>&1",
             timeout=10
         )
 
-        logger.debug(f"RCON raw response: {result}")
+        logger.debug(f"RCON raw response: {result[:200]}")
 
         if "There are" in result:
             lines = result.strip().split('\n')
@@ -52,7 +58,11 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
                         # Ищем имена после двоеточия
                         if ':' in line and current > 0:
                             names_part = line.split(':', 1)[1].strip()
-                            names = [n.strip() for n in names_part.split(',') if n.strip()]
+
+                            # Убираем ANSI escape-коды и очищаем имена
+                            names_clean = re.sub(r'\x1b\[[0-9;]*m', '', names_part)
+                            names = [n.strip() for n in names_clean.split(',') if n.strip()]
+
                             logger.info(f"✅ RCON: {current}/{maximum} игроков: {names}")
                             return current, maximum, names
 
