@@ -25,8 +25,8 @@ ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
 
 # ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
 ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
-ENABLE_GROUP_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления в группу
-NOTIFICATION_GROUP_ID = None  # ✅ ID группы для уведомлений (например: -1001234567890)
+ENABLE_GROUP_NOTIFICATIONS = True  # ✅ Включить/выключить уведомления в группу
+NOTIFICATION_GROUP_ID = -5142213077  # ✅ ID группы для уведомлений (например: -1001234567890)
 
 # Глобальные переменные
 ADMIN_USER_IDS = set()
