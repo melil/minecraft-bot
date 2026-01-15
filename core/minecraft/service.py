@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from typing import Tuple, Optional, List
+from core.config import MINECRAFT_RCON_PASSWORD
 
 from core.ssh.client import SSHClient
 
@@ -30,15 +31,9 @@ async def is_ready(ssh_config: dict) -> bool:
 
 
 async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Optional[int], Optional[List[str]]]:
-    """
-    Получает список игроков через RCON
-    """
     try:
-        # Временно используем хардкод пароля (потом можно вынести в конфиг)
-        RCON_PASSWORD = "SuperPassword228"
-
         result = await client.execute(
-            f"mcrcon -H 127.0.0.1 -P 25575 -p '{RCON_PASSWORD}' list 2>&1",
+            f"mcrcon -H 127.0.0.1 -P 25575 -p '{MINECRAFT_RCON_PASSWORD}' list 2>&1",
             timeout=10
         )
 
