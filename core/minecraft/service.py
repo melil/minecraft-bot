@@ -1,49 +1,49 @@
 import asyncio
 import logging
+import re
 from typing import Tuple, Optional, List
 
 from core.ssh.client import SSHClient
-from core.config import MINECRAFT_SERVER_SSH
 
 logger = logging.getLogger(__name__)
 
 
 async def is_ready(ssh_config: dict) -> bool:
     """
-    Проверяет, готов ли Minecraft сервер к подключению
+    Проверяет, готов ли Minecraft сервер через systemd
     """
     try:
         client = SSHClient(**ssh_config)
-        result = await client.execute("systemctl is-active minecraft.service")
+        result = await client.execute("systemctl is-active minecraft.service || echo 'inactive'", timeout=10)
         is_active = result.strip() == "active"
-        logger.debug(f"Minecraft service active: {is_active}")
+        logger.debug(f"Minecraft systemd status: {result.strip()}")
         return is_active
     except Exception as e:
-        logger.error(f"Ошибка проверки готовности Minecraft: {e}")
+        logger.error(f"Ошибка проверки статуса Minecraft: {e}")
         return False
 
 
 async def players_count(ssh_config: dict) -> int:
     """
-    Получает количество игроков онлайн
+    Получает количество игроков из логов journalctl
     """
     try:
         client = SSHClient(**ssh_config)
+
+        # Ищем последнее упоминание количества игроков в логах
         result = await client.execute(
-            "tmux send-keys -t minecraft 'list' C-m && sleep 0.5 && "
-            "tmux capture-pane -t minecraft -p | grep 'There are' | tail -1"
+            "journalctl -u minecraft.service --since '10 minutes ago' --no-pager 2>/dev/null | "
+            "grep -i 'UUID of player' | wc -l || echo '0'",
+            timeout=15
         )
 
-        if "There are" in result:
-            # Формат: "There are 2 of a max of 20 players online:"
-            parts = result.split()
-            if len(parts) >= 3:
-                count = int(parts[2])
-                logger.debug(f"Players online: {count}")
-                return count
+        count = 0
+        if result and result.strip().isdigit():
+            count = int(result.strip())
 
-        logger.debug("No players online")
-        return 0
+        logger.debug(f"Игроков онлайн (из логов): {count}")
+        return count
+
     except Exception as e:
         logger.error(f"Ошибка получения количества игроков: {e}")
         return 0
@@ -51,59 +51,67 @@ async def players_count(ssh_config: dict) -> int:
 
 async def players_with_names_count(ssh_config: dict) -> Tuple[int, int, Optional[List[str]]]:
     """
-    Получает количество игроков, максимум и список имен
-
-    Returns:
-        Tuple[int, int, Optional[List[str]]]: (текущие игроки, максимум, список имен)
+    Получает количество игроков и их имена из логов
     """
     try:
         client = SSHClient(**ssh_config)
+
+        # Получаем события входа/выхода за последние 30 минут
         result = await client.execute(
-            "tmux send-keys -t minecraft 'list' C-m && sleep 0.5 && "
-            "tmux capture-pane -t minecraft -p | grep -A 1 'There are' | tail -2"
+            "journalctl -u minecraft.service --since '30 minutes ago' --no-pager 2>/dev/null | "
+            "grep -E 'joined the game|left the game' | tail -50 || echo ''",
+            timeout=15
         )
 
-        lines = result.strip().split('\n')
-        players = 0
-        max_players = 20
-        names = None
+        # Парсим имена игроков
+        online_players = set()
 
-        for line in lines:
-            if "There are" in line:
-                # "There are 2 of a max of 20 players online:"
-                parts = line.split()
-                if len(parts) >= 3:
-                    players = int(parts[2])
-                if len(parts) >= 7:
-                    max_players = int(parts[6])
-            elif line.strip() and "There are" not in line:
-                # Список игроков через запятую
-                names = [name.strip() for name in line.split(',') if name.strip()]
+        if result:
+            for line in result.split('\n'):
+                # Паттерн: "player_name joined the game"
+                if 'joined the game' in line.lower():
+                    match = re.search(r'(\w+)\s+joined the game', line, re.IGNORECASE)
+                    if match:
+                        player_name = match.group(1)
+                        online_players.add(player_name)
+                        logger.debug(f"Игрок вошел: {player_name}")
 
-        logger.debug(f"Players: {players}/{max_players}, Names: {names}")
-        return players, max_players, names
+                # Паттерн: "player_name left the game"
+                elif 'left the game' in line.lower():
+                    match = re.search(r'(\w+)\s+left the game', line, re.IGNORECASE)
+                    if match:
+                        player_name = match.group(1)
+                        online_players.discard(player_name)
+                        logger.debug(f"Игрок вышел: {player_name}")
+
+        players_count = len(online_players)
+        names_list = sorted(list(online_players)) if online_players else None
+
+        logger.debug(f"Игроков онлайн: {players_count}, Имена: {names_list}")
+        return players_count, 20, names_list
+
     except Exception as e:
         logger.error(f"Ошибка получения информации об игроках: {e}")
         return 0, 20, None
 
-
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 async def get_minecraft_status(ssh_config: dict) -> dict:
     """
     Получает полный статус Minecraft сервера
 
     Returns:
-        dict: {
-            'active': bool,
-            'players': int,
-            'max_players': int,
-            'names': List[str] | None
+        {
+            'active': bool,         # Запущен ли сервер
+            'players': int,         # Количество игроков
+            'max_players': int,     # Максимум игроков
+            'names': List[str]|None # Список имен игроков
         }
     """
+    # Проверяем, запущен ли сервер
     active = await is_ready(ssh_config)
 
     if not active:
+        logger.debug("Minecraft сервер не активен")
         return {
             'active': False,
             'players': 0,
@@ -111,6 +119,7 @@ async def get_minecraft_status(ssh_config: dict) -> dict:
             'names': None
         }
 
+    # Получаем информацию об игроках
     players, max_players, names = await players_with_names_count(ssh_config)
 
     return {
