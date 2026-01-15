@@ -34,10 +34,11 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
     Получает список игроков через RCON
     """
     try:
-        # Команда с абсолютным путем к server.properties
+        # Временно используем хардкод пароля (потом можно вынести в конфиг)
+        RCON_PASSWORD = "SuperPassword228"
+
         result = await client.execute(
-            f"RCON_PASS=$(grep 'rcon.password' {MINECRAFT_DIR}/server.properties | cut -d= -f2 | tr -d '\\r\\n') && "
-            f"mcrcon -H 127.0.0.1 -P 25575 -p \"$RCON_PASS\" list 2>&1",
+            f"mcrcon -H 127.0.0.1 -P 25575 -p '{RCON_PASSWORD}' list 2>&1",
             timeout=10
         )
 
@@ -60,16 +61,15 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
                             logger.info(f"✅ RCON: {current}/{maximum} игроков: {names}")
                             return current, maximum, names
 
-                        logger.info(f"✅ RCON: {current}/{maximum} игроков (без имен в ответе)")
+                        logger.info(f"✅ RCON: {current}/{maximum} игроков")
                         return current, maximum, None
 
-        logger.warning(f"RCON ответ не содержит данных о игроках: {result[:100]}")
+        logger.warning(f"RCON ответ не содержит данных: {result[:200]}")
         return None, None, None
 
     except Exception as e:
         logger.debug(f"RCON не доступен: {e}")
         return None, None, None
-
 
 async def get_players_via_logs(client: SSHClient) -> Tuple[int, int, Optional[List[str]]]:
     """
