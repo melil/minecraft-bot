@@ -34,35 +34,37 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
     Получает список игроков через RCON
     """
     try:
-        # Получаем пароль RCON из конфига
-        password_cmd = f"grep 'rcon.password' {MINECRAFT_DIR}/server.properties 2>/dev/null | cut -d= -f2 | tr -d '\\r\\n' || echo 'minecraft'"
-
+        # Исправленная команда с правильным путем
         result = await client.execute(
-            f"RCON_PASS=$({password_cmd}) && "
-            f"mcrcon -H 127.0.0.1 -P 25575 -p \"$RCON_PASS\" list 2>/dev/null",
+            f"cd {MINECRAFT_DIR} && "
+            f"RCON_PASS=$(grep 'rcon.password' server.properties | cut -d= -f2 | tr -d '\\r\\n') && "
+            f"mcrcon -H 127.0.0.1 -P 25575 -p \"$RCON_PASS\" list 2>&1",
             timeout=10
         )
+
+        logger.debug(f"RCON raw response: {result}")
 
         if "There are" in result:
             lines = result.strip().split('\n')
             for line in lines:
                 if "There are" in line:
-                    # Паттерн: "There are 2 of a max of 20 players online: Steve, Alex"
+                    # Паттерн: "There are 2 of a max of 20 players online: Trudovick, aziatov"
                     match = re.search(r'There are (\d+) of a max of (\d+) players online', line)
                     if match:
                         current = int(match.group(1))
                         maximum = int(match.group(2))
 
+                        # Ищем имена после двоеточия
                         if ':' in line and current > 0:
                             names_part = line.split(':', 1)[1].strip()
                             names = [n.strip() for n in names_part.split(',') if n.strip()]
-                            logger.info(f"RCON: {current}/{maximum} игроков: {names}")
+                            logger.info(f"✅ RCON: {current}/{maximum} игроков: {names}")
                             return current, maximum, names
 
-                        logger.info(f"RCON: {current}/{maximum} игроков (без имен)")
+                        logger.info(f"✅ RCON: {current}/{maximum} игроков (без имен в ответе)")
                         return current, maximum, None
 
-        logger.debug("RCON: нет данных")
+        logger.warning(f"RCON ответ не содержит данных о игроках: {result[:100]}")
         return None, None, None
 
     except Exception as e:
