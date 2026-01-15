@@ -4,7 +4,6 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-
 class RegRuClient:
     """
     Клиент для работы с API REG.RU Cloud VPS

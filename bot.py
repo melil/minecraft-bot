@@ -124,7 +124,6 @@ async def notify_group(text: str):
 
 
 # ==================== МОНИТОРИНГ ПРОСТОЯ ====================
-
 async def idle_monitor_loop():
     """
     Фоновая задача, проверяющая количество игроков.
@@ -144,11 +143,13 @@ async def idle_monitor_loop():
                 continue
 
             # Получаем статус сервера
+            logger.debug("📡 Получаю статус сервера...")
             status: ServerStatus = await facade.status()
+            logger.debug(f"📊 Статус получен: state={status.state}, players={status.players}")
 
             # Проверяем только если сервер в состоянии READY
             if status.state != ServerState.READY:
-                logger.debug(f"Сервер не готов ({status.state}), мониторинг пропущен")
+                logger.debug(f"⏸️ Сервер не готов ({status.state}), мониторинг пропущен")
                 idle_since = None
                 await asyncio.sleep(CHECK_INTERVAL)
                 continue
@@ -177,16 +178,16 @@ async def idle_monitor_loop():
             else:
                 # Игроки есть — сбрасываем таймер
                 if idle_since is not None:
-                    logger.info(f"✅ Игроки вернулись, таймер сброшен")
+                    logger.info(f"✅ Игроки вернулись ({players}), таймер сброшен")
                 idle_since = None
 
         except Exception as e:
-            logger.error(f"❌ Ошибка в мониторинге: {e}")
+            logger.error(f"❌ Ошибка в мониторинге: {e}", exc_info=True)
 
+        logger.debug(f"💤 Сон {CHECK_INTERVAL}с...")
         await asyncio.sleep(CHECK_INTERVAL)
 
     logger.info("🔍 Мониторинг простоя остановлен")
-
 
 async def auto_shutdown_server():
     """
@@ -923,6 +924,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
 
+async def post_init(application: Application) -> None:
+    """
+    Выполняется после инициализации бота
+    """
+    global bot_application
+    bot_application = application
+
+    logger.info("🤖 Бот инициализирован")
+
+    # Проверяем статус сервера
+    try:
+        status: ServerStatus = await facade.status()
+        logger.info(f"📊 Начальный статус сервера: {status.state}")
+
+        # Запускаем мониторинг только если сервер работает
+        if status.state == ServerState.READY:
+            logger.info("✅ Сервер работает, запускаю мониторинг")
+            start_idle_monitoring()
+        else:
+            logger.info(f"⏸️ Сервер в состоянии {status.state}, мониторинг не запущен")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке начального статуса: {e}")
+
+
+async def post_shutdown(application: Application) -> None:
+    """
+    Выполняется при остановке бота
+    """
+    logger.info("🛑 Останавливаю бот...")
+    stop_idle_monitoring()
+
+    # Отменяем все активные операции
+    for chat_id in list(active_operations.keys()):
+        cancel_operation(chat_id)
+
+    logger.info("✅ Бот остановлен")
+
+
 def main():
     """Запуск бота"""
     global bot_application
@@ -930,7 +970,10 @@ def main():
     load_admin_ids()
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    bot_application = application  # ✅ Сохраняем глобальную ссылку
+
+    # ✅ Регистрируем хуки жизненного цикла
+    application.post_init = post_init
+    application.post_shutdown = post_shutdown
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
@@ -946,7 +989,7 @@ def main():
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    logger.info("Бот запускается...")
+    logger.info("🚀 Бот запускается...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
