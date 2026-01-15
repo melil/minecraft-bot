@@ -30,7 +30,7 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[int, int, Optional[Li
     try:
         # Пробуем mcrcon
         result = await client.execute(
-            "mcrcon -H 127.0.0.1 -P 25575 -p $(grep 'rcon.password' /opt/minecraft/server.properties | cut -d= -f2 || echo 'minecraft') list 2>/dev/null",
+            "mcrcon -H 127.0.0.1 -P 25575 -p $(grep 'rcon.password' /root/freshcraft_industrial_server/server.properties | cut -d= -f2 || echo 'minecraft') list 2>/dev/null",
             timeout=10
         )
 
