@@ -615,9 +615,9 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat = update.effective_chat
     user = update.effective_user
 
-    if chat.type != "private":
-        await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-        return
+    # if chat.type != "private":
+    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
+    #     return
 
     if not is_admin(user.id):
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
@@ -651,9 +651,9 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
     chat = update.effective_chat
     user = update.effective_user
 
-    if chat.type != "private":
-        await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-        return
+    # if chat.type != "private":
+    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
+    #     return
 
     if not is_admin(user.id):
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
@@ -809,7 +809,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     chat = update.effective_chat
-    show_admin = is_admin(user.id) and chat.type == "private"
+    show_admin = is_admin(user.id) and chat.id == NOTIFICATION_GROUP_ID
 
     data = query.data
 
