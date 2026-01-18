@@ -189,6 +189,7 @@ class MinecraftLogParser:
             # 5. Достижения
             match = MinecraftLogParser.PATTERNS['achievement'].search(line)
             if match:
+                logger.debug(f"🏆 Achievement match found! Groups: {match.groups()}")
                 player_name = match.group(1)
                 achievement = match.group(3)
                 return PlayerAchievementEvent(
@@ -215,6 +216,10 @@ class MinecraftLogParser:
                         death_message=death_message,
                         player_name=player_name
                     )
+            
+            # Если ничего не совпало - логируем для отладки
+            if 'advancement' in line.lower() or 'challenge' in line.lower() or 'goal' in line.lower():
+                logger.warning(f"⚠️ Achievement-like line NOT parsed: {line[:200]}")
             
             return None
             
