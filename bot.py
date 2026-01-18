@@ -459,9 +459,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     chat = update.effective_chat
-    show_admin = is_admin(user.id) and (
-            chat.type == "private" or chat.id == NOTIFICATION_GROUP_ID
-    )
+    
+    # Логика прав доступа:
+    # - В группе: все участники группы могут нажимать кнопки
+    # - В личке: только админы могут нажимать кнопки управления
+    is_group_chat = chat.id == NOTIFICATION_GROUP_ID
+    is_private_chat = chat.type == "private"
+    is_user_admin = is_admin(user.id)
+    
+    # Показываем админские кнопки если:
+    # 1. Это группа (все участники группы видят кнопки управления)
+    # 2. Это личка с ботом И пользователь админ
+    show_admin = is_group_chat or (is_private_chat and is_user_admin)
 
     data = query.data
 
