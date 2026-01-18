@@ -57,7 +57,7 @@ class ServerStatus:
             ServerState.READY: "Работает"
         }
 
-        monitoring_status = "🟢 <b>Мониторинг:</b> Включен" if monitoring_enabled else "🔴 <b>Мониторинг:</b> Выключен"
+        monitoring_status = "\n🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
 
 
         emoji = state_emoji.get(status.state, "⚪")
@@ -73,9 +73,6 @@ class ServerStatus:
         else:
             result += f"⏱️ <b>Uptime:</b> N/A\n"
 
-        if status.minecraft_active:
-            result += monitoring_status
-
         if status.state == ServerState.READY and status.minecraft_active:
             result += f"\n🎮 <b>Minecraft:</b> Активен\n"
             result += f"👥 <b>Игроков:</b> {status.players}/{status.max_players}"
@@ -84,6 +81,9 @@ class ServerStatus:
                 result += f"\n📋 <b>Онлайн:</b> {', '.join(status.names)}"
         else:
             result += f"\n🎮 <b>Minecraft:</b> Не запущен"
+
+        result += "\nБот:\n"
+        result += monitoring_status
 
         return result
 
