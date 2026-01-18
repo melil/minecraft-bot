@@ -43,6 +43,8 @@ class InfoCommands(CommandBase):
 
         if chat.type == "private":
             show_admin = self.is_admin(user.id)
+            is_super_admin = user.id == 78120051
+            
             welcome_text = (
                 "👋 Привет! Я бот для управления Minecraft сервером.\n\n"
                 "📋 Доступные команды:\n"
@@ -58,12 +60,13 @@ class InfoCommands(CommandBase):
                     "/stop_server - остановить сервер\n"
                     "/restart_server - перезагрузить сервер\n"
                     "/settings - настройки автовыключения\n"
-                "/add_admin <id> - добавить администратора\n"
-                "/list_admins - список администраторов\n"
-                "/del_admin <id> - удалить администратора\n"
-                "/set_minecraft_nick <ник> - установить Minecraft ник\n"
-                "/promote_super_admin <id> - повысить до супер-админа\n"
-            )
+                    "/add_admin <id> - добавить администратора\n"
+                    "/list_admins - список администраторов\n"
+                    "/del_admin <id> - удалить администратора\n"
+                    "/set_minecraft_nick <ник> - установить Minecraft ник\n"
+                )
+            if is_super_admin:
+                welcome_text += "/promote_super_admin <id> - повысить до супер-админа\n"
             welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
             keyboard = await self.get_keyboard(show_admin)
             await update.message.reply_text(welcome_text, reply_markup=keyboard)
@@ -80,6 +83,7 @@ class InfoCommands(CommandBase):
             return
         
         show_admin = self.is_admin(user.id)
+        is_super_admin = user.id == 78120051
         
         help_text = (
             "📋 <b>Доступные команды:</b>\n\n"
@@ -104,8 +108,16 @@ class InfoCommands(CommandBase):
                 "• /list_admins - список администраторов\n"
                 "• /set_minecraft_nick &lt;ник&gt; - установить свой Minecraft ник\n"
                 "• /set_minecraft_nick &lt;id&gt; &lt;ник&gt; - установить ник пользователю\n"
-                "• /promote_super_admin &lt;id&gt; - повысить до супер-админа (только для супер-админов)\n"
-                "\n<b>🎛️ Доступные кнопки:</b>\n"
+            )
+        
+        if is_super_admin:
+            help_text += (
+                "\n<b>👑 Для супер-администратора:</b>\n"
+                "• /promote_super_admin &lt;id&gt; - повысить до супер-админа\n"
+            )
+        
+        if show_admin:
+            help_text += (
                 "• 📊 Статус - текущий статус сервера\n"
                 "• 💵 Пополнить - информация о пополнении\n"
                 "• ▶️ Запустить - запуск сервера\n"
