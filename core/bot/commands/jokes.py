@@ -73,6 +73,7 @@ class JokeCommands(CommandBase):
             return None, "❌ Не удалось получить анекдот (ошибка сети)"
         except Exception as e:
             logger.error(f"Неожиданная ошибка: {e}")
+            print(f"Неожиданная ошибка: {e}")
             return None, "❌ Произошла ошибка при получении анекдота"
     
     async def handle_joke_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
