@@ -79,9 +79,13 @@ class ServerStatus:
         else:
             result += f"\n🎮 <b>Minecraft:</b> Не запущен"
 
-        result += "\n"
-        result += "Бот:\n"
-        result += "🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
+        result += "\nБот:\n\n"
+        result += (
+            "🟢 <b>Автовыключение:</b> Включено"
+            if monitoring_enabled
+            else "🔴 <b>Автовыключение:</b> Выключено"
+        )
+
         return result
 
     @staticmethod
