@@ -649,7 +649,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -708,7 +708,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -742,7 +742,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(

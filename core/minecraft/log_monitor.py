@@ -156,10 +156,13 @@ class MinecraftLogParser:
                 if '[Telegram' in message or message.startswith('[Telegram'):
                     return None
                 
-                # Проверяем, начинается ли сообщение с "tg " или "tg:"
-                if message.lower().startswith('tg ') or message.lower().startswith('tg:'):
-                    # Убираем префикс "tg " или "tg:"
-                    actual_message = message[3:].strip() if message[2] == ' ' else message[2:].strip()
+                # Проверяем, начинается ли сообщение с "telegram:" или "telegram "
+                if message.lower().startswith('telegram:') or message.lower().startswith('telegram '):
+                    # Убираем префикс "telegram:" или "telegram "
+                    if message.lower().startswith('telegram:'):
+                        actual_message = message[9:].strip()  # len('telegram:') = 9
+                    else:
+                        actual_message = message[9:].strip()  # len('telegram ') = 9
                     
                     # Если после префикса есть текст, создаем TelegramMessageEvent
                     if actual_message:
@@ -310,13 +313,16 @@ class MinecraftLogMonitor:
             
             # Обрабатываем каждую строку
             new_events = 0
-            for line in lines:
+            for i, line in enumerate(lines):
                 # Пропускаем пустые строки
                 if not line.strip():
                     continue
                 
+                logger.debug(f"📃 Строка {i+1}: {line[:150]}")  # Первые 150 символов
+                
                 # Пропускаем уже обработанные строки
                 if self.last_log_line and line == self.last_log_line:
+                    logger.debug(f"⏭️ Строка уже обработана, пропуск")
                     continue
                 
                 # Парсим событие
