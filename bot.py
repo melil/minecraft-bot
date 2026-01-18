@@ -609,19 +609,25 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     """Обработчик inline запросов для быстрых ответов в Minecraft"""
     query = update.inline_query.query
     
+    logger.info(f"📥 Inline query получен: '{query}'")
+    
     # Проверяем, что запрос начинается с /say
     if not query.startswith('/say '):
+        logger.debug(f"⏭️ Inline query не начинается с /say, пропуск")
         await update.inline_query.answer([])
         return
     
     # Парсим команду: /say PlayerName text
     parts = query.split(' ', 2)
     if len(parts) < 2:
+        logger.debug(f"⏭️ Inline query слишком короткий, нужен ник игрока")
         await update.inline_query.answer([])
         return
     
     player_name = parts[1] if len(parts) > 1 else ""
     message_text = parts[2] if len(parts) > 2 else ""
+    
+    logger.info(f"✅ Создаю inline результат для /say {player_name}")
     
     # Создаем результат
     results = [
@@ -636,6 +642,7 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     
     await update.inline_query.answer(results, cache_time=0)
+    logger.info(f"📤 Inline результат отправлен")
 
 
 # ==================== ОБРАБОТЧИК КНОПОК ====================
