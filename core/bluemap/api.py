@@ -86,3 +86,82 @@ class BlueMapAPI:
                     return resp.status == 200
         except:
             return False
+    
+    async def get_map_size(self, bluemap_path: str = "/root/freshcraft_industrial_server/bluemap") -> dict:
+        """
+        Get BlueMap directory size and stats via SSH
+        
+        Args:
+            bluemap_path: Path to bluemap directory on server
+            
+        Returns:
+            Dict with: size_mb, size_human, file_count
+        """
+        import asyncio
+        from core.ssh.client import SSHClient
+        
+        try:
+            logger.info(f"🔍 Начало проверки размера карты: {bluemap_path}")
+            client = SSHClient(**self.ssh_config)
+            
+            # Проверяем, что папка существует
+            cmd_check = f"[ -d {bluemap_path} ] && echo 'exists' || echo 'not_found'"
+            result_check = await client.execute(cmd_check, timeout=5)
+            
+            if 'not_found' in result_check:
+                logger.error(f"❌ Папка не найдена: {bluemap_path}")
+                return {
+                    'size_mb': 0,
+                    'size_human': 'Unknown',
+                    'file_count': 0,
+                    'path': bluemap_path,
+                    'error': f'Directory not found: {bluemap_path}'
+                }
+            
+            logger.info("✅ Папка найдена, получаю размер...")
+            
+            # Используем более быструю команду с --max-depth
+            cmd_size = f"du -sm --max-depth=0 {bluemap_path} 2>/dev/null | cut -f1"
+            result_size = await client.execute(cmd_size, timeout=30)
+            size_mb = int(result_size.strip()) if result_size.strip() else 0
+            
+            logger.info(f"💾 Размер получен: {size_mb} MB")
+            
+            # Человеко-читаемый формат
+            cmd_human = f"du -sh --max-depth=0 {bluemap_path} 2>/dev/null | cut -f1"
+            result_human = await client.execute(cmd_human, timeout=30)
+            size_human = result_human.strip() or f"{size_mb}M"
+            
+            logger.info(f"📊 Форматированный размер: {size_human}")
+            
+            # Подсчет файлов - с ограничением глубины для скорости
+            cmd_files = f"find {bluemap_path}/web/maps/ -maxdepth 3 -type f 2>/dev/null | wc -l"
+            result_files = await client.execute(cmd_files, timeout=20)
+            file_count = int(result_files.strip()) if result_files.strip() else 0
+            
+            logger.info(f"🗂️ Файлов найдено: {file_count}")
+            
+            return {
+                'size_mb': size_mb,
+                'size_human': size_human,
+                'file_count': file_count,
+                'path': bluemap_path
+            }
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Timeout при получении размера карты")
+            return {
+                'size_mb': 0,
+                'size_human': 'Unknown',
+                'file_count': 0,
+                'path': bluemap_path,
+                'error': 'Timeout: карта слишком большая для быстрого подсчета'
+            }
+        except Exception as e:
+            logger.error(f"❌ Error getting BlueMap size: {e}", exc_info=True)
+            return {
+                'size_mb': 0,
+                'size_human': 'Unknown',
+                'file_count': 0,
+                'path': bluemap_path,
+                'error': str(e)
+            }
