@@ -83,6 +83,7 @@ class ServerStatus:
             result += f"\n🎮 <b>Minecraft:</b> Не запущен"
 
         result += "\nБот:\n"
+        result += "\n"
         result += monitoring_status
 
         return result
