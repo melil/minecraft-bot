@@ -367,7 +367,7 @@ async def perform_server_operation(
             await bot_application.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"{state_emoji} {progress}\n\n{ServerStatus.format_server_status(status)}",
+                text=f"{state_emoji} {progress}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
                 reply_markup=await get_dynamic_keyboard(show_admin),
                 parse_mode="HTML",
                 disable_web_page_preview=True
@@ -387,7 +387,7 @@ async def perform_server_operation(
                 await bot_application.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"{success_message}\n\n{ServerStatus.format_server_status(status)}",
+                    text=f"{success_message}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
                     reply_markup=await get_dynamic_keyboard(show_admin),
                     parse_mode="HTML",
                     disable_web_page_preview=True
@@ -560,7 +560,7 @@ async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if status.state != ServerState.READY:
-        text = ServerStatus.format_server_status(status)
+        text = ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)
         await status_msg.edit_text(
             f"{text}\n🎮 Minecraft: не запущен",
             parse_mode="HTML",
@@ -690,7 +690,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=keyboard)
 
     result = await facade.status()
-    text = ServerStatus.format_server_status(result)
+    text = ServerStatus.format_server_status(result, monitoring_enabled=idle_monitoring_enabled)
 
     keyboard = await get_dynamic_keyboard(show_admin)
     await msg.edit_text(
@@ -874,7 +874,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ========== НАЗАД ==========
     elif data == "back_to_main":
         result: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(result)
+        text = ServerStatus.format_server_status(result, monitoring_enabled=idle_monitoring_enabled)
         keyboard = await get_dynamic_keyboard(show_admin)
         await query.edit_message_text(
             text,
