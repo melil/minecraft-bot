@@ -220,6 +220,8 @@ class MinecraftLogParser:
             # Если ничего не совпало - логируем для отладки
             if 'advancement' in line.lower() or 'challenge' in line.lower() or 'goal' in line.lower():
                 logger.warning(f"⚠️ Achievement-like line NOT parsed: {line[:200]}")
+            if 'joined' in line.lower() or 'left' in line.lower():
+                logger.warning(f"⚠️ Join/Leave-like line NOT parsed: {line[:200]}")
             
             return None
             
@@ -251,6 +253,8 @@ class MinecraftLogMonitor:
         self.is_running = False
         self.task = None
         self.parser = MinecraftLogParser()
+        self.processed_lines = set()  # Set для отслеживания обработанных строк
+        self.max_cache_size = 200  # Максимальный размер кэша
     
     async def start(self):
         """Запускает мониторинг логов"""
@@ -315,19 +319,26 @@ class MinecraftLogMonitor:
             
             lines = result.strip().split('\n')
             
-            # Убираем дубликаты, сохраняя порядок
-            seen_lines = set()
-            unique_lines = []
+            # Фильтруем уже обработанные строки (между разными проверками)
+            # Это предотвращает дубликаты из-за перекрывающихся окон journalctl
+            new_lines = []
             for line in lines:
-                if line.strip() and line not in seen_lines:
-                    seen_lines.add(line)
-                    unique_lines.append(line)
+                if line.strip() and line not in self.processed_lines:
+                    new_lines.append(line)
+                    self.processed_lines.add(line)
             
-            logger.debug(f"📄 Обработка {len(unique_lines)} уникальных строк (было {len(lines)})")
+            # Ограничиваем размер кэша
+            if len(self.processed_lines) > self.max_cache_size:
+                # Удаляем половину старых (set не гарантирует порядок, но это ок)
+                items_to_remove = list(self.processed_lines)[:(self.max_cache_size // 2)]
+                for item in items_to_remove:
+                    self.processed_lines.discard(item)
             
-            # Обрабатываем каждую уникальную строку
+            logger.debug(f"📄 Обработка {len(new_lines)} новых строк (было {len(lines)}, кэш: {len(self.processed_lines)})")
+            
+            # Обрабатываем каждую новую строку
             new_events = 0
-            for i, line in enumerate(unique_lines):
+            for i, line in enumerate(new_lines):
                 logger.debug(f"📃 Строка {i+1}: {line[:150]}")  # Первые 150 символов
                 
                 # Парсим событие
