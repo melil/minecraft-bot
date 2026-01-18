@@ -809,7 +809,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     chat = update.effective_chat
-    show_admin = is_admin(user.id) and chat.id == NOTIFICATION_GROUP_ID or chat.id == "private"
+    show_admin = is_admin(user.id) and (
+            chat.id == "private" or chat.id == NOTIFICATION_GROUP_ID
+    )
 
     data = query.data
 
