@@ -3,6 +3,8 @@
 """
 import logging
 import random
+import json
+import re
 import aiohttp
 from telegram import Update
 from telegram.ext import Application, ContextTypes
@@ -59,21 +61,38 @@ class JokeCommands(CommandBase):
                         logger.error(f"API вернул статус {response.status}")
                         return None, "❌ Не удалось получить анекдот (ошибка API)"
                     
-                    data = await response.json()
-                    content = data.get("content", "").strip()
+                    # Читаем ответ как текст, чтобы обработать control characters
+                    text = await response.text()
                     
-                    if not content:
-                        logger.error("API вернул пустой контент")
-                        return None, "❌ Не удалось получить анекдот (пустой ответ)"
+                    # Удаляем или заменяем недопустимые control characters (кроме \n, \r, \t)
+                    # Оставляем только стандартные whitespace символы
+                    cleaned_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
                     
-                    return content_type_name, content
+                    try:
+                        # Парсим JSON
+                        data = json.loads(cleaned_text)
+                        content = data.get("content", "").strip()
+                        
+                        if not content:
+                            logger.error("API вернул пустой контент")
+                            return None, "❌ Не удалось получить анекдот (пустой ответ)"
+                        
+                        return content_type_name, content
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Ошибка парсинга JSON: {e}, текст ответа: {text[:200]}")
+                        # Попробуем извлечь content вручную, если JSON невалидный
+                        match = re.search(r'"content"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', cleaned_text)
+                        if match:
+                            content = match.group(1).replace('\\"', '"').replace('\\n', '\n').replace('\\r', '\r').strip()
+                            if content:
+                                return content_type_name, content
+                        return None, "❌ Не удалось обработать ответ от API"
                     
         except aiohttp.ClientError as e:
             logger.error(f"Ошибка при запросе к API: {e}")
             return None, "❌ Не удалось получить анекдот (ошибка сети)"
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {e}")
-            print(f"Неожиданная ошибка: {e}")
+            logger.error(f"Неожиданная ошибка: {e}", exc_info=True)
             return None, "❌ Произошла ошибка при получении анекдота"
     
     async def handle_joke_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
