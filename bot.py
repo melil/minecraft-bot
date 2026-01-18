@@ -32,8 +32,8 @@ NOTIFICATION_GROUP_ID = -5142213077  # ✅ ID группы для уведомл
 ADMIN_USER_IDS = set()
 
 # ==================== IDLE SHUTDOWN СИСТЕМА ====================
-IDLE_SHUTDOWN_TIMEOUT = 180  # 5 минут в секундах
-CHECK_INTERVAL = 60  # Проверка каждую минуту
+IDLE_SHUTDOWN_TIMEOUT = 600  # 5 минут в секундах
+CHECK_INTERVAL = 30  # Проверка каждую минуту
 
 idle_since: datetime | None = None
 idle_monitoring_active = False
