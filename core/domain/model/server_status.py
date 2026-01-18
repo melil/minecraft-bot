@@ -57,9 +57,6 @@ class ServerStatus:
             ServerState.READY: "Работает"
         }
 
-        monitoring_status = "\n🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
-
-
         emoji = state_emoji.get(status.state, "⚪")
         text = state_text.get(status.state, "Неизвестно")
 
@@ -84,8 +81,7 @@ class ServerStatus:
 
         result += "\n"
         result += "Бот:\n"
-        result += "\n" + monitoring_status
-
+        result += "\n🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
         return result
 
     @staticmethod
