@@ -4,11 +4,12 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
-    ContextTypes
+    ContextTypes,
+    InlineQueryHandler
 )
 from core.config import TELEGRAM_TOKEN, REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
 from core.server.facade import ServerFacade
@@ -335,11 +336,11 @@ async def minecraft_event_handler(event):
             # Используем встроенный метод форматирования
             message = event.format_telegram()
             
-            # Создаем inline кнопку "Ответить" с callback_data
+            # Создаем inline кнопку "Ответить" с inline query
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(
                     text="💬 Ответить",
-                    callback_data=f"reply_mc:{event.player_name}"
+                    switch_inline_query_current_chat=f"/say {event.player_name} "
                 )]
             ])
             
@@ -602,6 +603,41 @@ async def perform_server_operation(
 # Здесь остаются только вспомогательные функции
 
 
+# ==================== ОБРАБОТЧИК INLINE ЗАПРОСОВ ====================
+
+async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик inline запросов для быстрых ответов в Minecraft"""
+    query = update.inline_query.query
+    
+    # Проверяем, что запрос начинается с /say
+    if not query.startswith('/say '):
+        await update.inline_query.answer([])
+        return
+    
+    # Парсим команду: /say PlayerName text
+    parts = query.split(' ', 2)
+    if len(parts) < 2:
+        await update.inline_query.answer([])
+        return
+    
+    player_name = parts[1] if len(parts) > 1 else ""
+    message_text = parts[2] if len(parts) > 2 else ""
+    
+    # Создаем результат
+    results = [
+        InlineQueryResultArticle(
+            id='say_command',
+            title=f'📤 Отправить в Minecraft',
+            description=f'{query}',
+            input_message_content=InputTextMessageContent(
+                message_text=query
+            )
+        )
+    ]
+    
+    await update.inline_query.answer(results, cache_time=0)
+
+
 # ==================== ОБРАБОТЧИК КНОПОК ====================
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -620,27 +656,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
-    # ========== ОТВЕТ НА СООБЩЕНИЕ ИЗ MINECRAFT ==========
-    if data.startswith("reply_mc:"):
-        from telegram import ForceReply
-        player_name = data.split(":", 1)[1]
-        
-        # Отправляем сообщение с force reply
-        await context.bot.send_message(
-            chat_id=chat.id,
-            text=f"💬 Ответ для <b>{player_name}</b>:\n\nОтправьте команду в формате:\n<code>/say {player_name} ваш_текст</code>",
-            parse_mode="HTML",
-            reply_markup=ForceReply(
-                input_field_placeholder=f"/say {player_name} ",
-                selective=True
-            ),
-            reply_to_message_id=query.message.message_id
-        )
-        
-        await query.answer("💬 Напишите ответ ниже")
-        return
-    
-    # Отвечаем на callback для остальных кнопок
+    # Отвечаем на callback
     await query.answer()
     
     # Логика прав доступа:
@@ -1027,6 +1043,9 @@ def main():
         register_or_update_group
     )
 
+    # Регистрируем обработчик inline запросов
+    application.add_handler(InlineQueryHandler(inline_query_handler))
+    
     # Регистрируем обработчик кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
