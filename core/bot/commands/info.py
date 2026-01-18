@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 class InfoCommands(CommandBase):
     """Информационные команды"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, idle_monitoring_enabled_getter, user_registrar=None):
-        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
+    def __init__(self, facade, admin_checker, keyboard_builder, idle_monitoring_enabled_getter, user_registrar=None, group_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
         self.get_idle_monitoring_enabled = idle_monitoring_enabled_getter
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,8 +24,22 @@ class InfoCommands(CommandBase):
         user = update.effective_user
         chat = update.effective_chat
         
-        # Register user
+        # Register user and group
         self._register_user_if_needed(user)
+        self._register_group_if_needed(chat)
+        
+        # In group - show only in allowed group
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return  # Silently ignore in other groups
+            
+            keyboard = await self.get_keyboard(True)  # Show admin buttons in group
+            await update.message.reply_text(
+                "🤖 Бот Minecraft сервера активен.\n"
+                "Используйте кнопки ниже для управления:",
+                reply_markup=keyboard
+            )
+            return
 
         if chat.type == "private":
             show_admin = self.is_admin(user.id)
@@ -53,18 +67,18 @@ class InfoCommands(CommandBase):
             welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
             keyboard = await self.get_keyboard(show_admin)
             await update.message.reply_text(welcome_text, reply_markup=keyboard)
-        else:
-            keyboard = await self.get_keyboard(False)
-            await update.message.reply_text(
-                "🤖 Бот Minecraft сервера активен.\n"
-                "Используйте /players для проверки игроков онлайн.",
-                reply_markup=keyboard
-            )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
         user = update.effective_user
+        chat = update.effective_chat
         self._register_user_if_needed(user)
+        self._register_group_if_needed(chat)
+        
+        # In group - check if allowed
+        if chat.type in ["group", "supergroup"] and not self._is_allowed_group(chat.id):
+            return
+        
         show_admin = self.is_admin(user.id)
         
         help_text = (
@@ -111,8 +125,17 @@ class InfoCommands(CommandBase):
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /status"""
         user = update.effective_user
+        chat = update.effective_chat
         self._register_user_if_needed(user)
-        show_admin = self.is_admin(user.id) and update.effective_chat.type == "private"
+        self._register_group_if_needed(chat)
+        
+        # In group - check if allowed
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return
+            show_admin = True  # Show admin buttons in group
+        else:
+            show_admin = self.is_admin(user.id) and chat.type == "private"
 
         keyboard = await self.get_keyboard(show_admin)
         msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=keyboard)
@@ -131,7 +154,13 @@ class InfoCommands(CommandBase):
     async def players_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /players (доступна всем)"""
         user = update.effective_user
+        chat = update.effective_chat
         self._register_user_if_needed(user)
+        self._register_group_if_needed(chat)
+        
+        # In group - check if allowed
+        if chat.type in ["group", "supergroup"] and not self._is_allowed_group(chat.id):
+            return
         
         status_msg = await update.message.reply_text(
             "⏳ Проверяю статус сервера...",
@@ -166,9 +195,9 @@ class InfoCommands(CommandBase):
         await update.message.reply_text("🏓 Понг! Бот работает.")
 
 
-def register_info_handlers(app: Application, facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar=None):
+def register_info_handlers(app: Application, facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar=None, group_registrar=None):
     """Регистрирует информационные команды"""
-    commands = InfoCommands(facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar)
+    commands = InfoCommands(facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar, group_registrar)
     
     app.add_handler(CommandHandler("start", commands.start_command))
     app.add_handler(CommandHandler("help", commands.help_command))

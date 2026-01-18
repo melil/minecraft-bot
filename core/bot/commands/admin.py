@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 class AdminCommands(CommandBase):
     """Административные команды"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, admin_manager, user_registrar=None):
-        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
+    def __init__(self, facade, admin_checker, keyboard_builder, admin_manager, user_registrar=None, group_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
         self.admin_manager = admin_manager
     
     async def add_admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,9 +176,9 @@ class AdminCommands(CommandBase):
             await update.message.reply_text("❌ Неверный ID пользователя.")
 
 
-def register_admin_handlers(app: Application, facade, is_admin_checker, keyboard_builder, admin_manager, user_registrar=None):
+def register_admin_handlers(app: Application, facade, is_admin_checker, keyboard_builder, admin_manager, user_registrar=None, group_registrar=None):
     """Регистрирует административные команды"""
-    commands = AdminCommands(facade, is_admin_checker, keyboard_builder, admin_manager, user_registrar)
+    commands = AdminCommands(facade, is_admin_checker, keyboard_builder, admin_manager, user_registrar, group_registrar)
     
     app.add_handler(CommandHandler("add_admin", commands.add_admin_command))
     app.add_handler(CommandHandler("del_admin", commands.del_admin_command))

@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class ServerCommands(CommandBase):
     """Команды управления сервером"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, operation_manager, user_registrar=None):
-        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
+    def __init__(self, facade, admin_checker, keyboard_builder, operation_manager, user_registrar=None, group_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
         self.operation_manager = operation_manager
     
     async def start_server_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -22,11 +22,19 @@ class ServerCommands(CommandBase):
         chat = update.effective_chat
         user = update.effective_user
         
-        # Register user
+        # Register user and group
         self._register_user_if_needed(user)
-
-        if not self.is_admin(user.id):
-            await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        self._register_group_if_needed(chat)
+        
+        # Allow in group or private chat for admins
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return  # Silently ignore in other groups
+        elif chat.type == "private":
+            if not self.is_admin(user.id):
+                await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+                return
+        else:
             return
 
         # Проверяем активные операции
@@ -50,11 +58,19 @@ class ServerCommands(CommandBase):
         chat = update.effective_chat
         user = update.effective_user
         
-        # Register user
+        # Register user and group
         self._register_user_if_needed(user)
-
-        if not self.is_admin(user.id):
-            await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        self._register_group_if_needed(chat)
+        
+        # Allow in group or private chat for admins
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return
+        elif chat.type == "private":
+            if not self.is_admin(user.id):
+                await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+                return
+        else:
             return
 
         # Проверяем активные операции
@@ -76,11 +92,19 @@ class ServerCommands(CommandBase):
         chat = update.effective_chat
         user = update.effective_user
         
-        # Register user
+        # Register user and group
         self._register_user_if_needed(user)
-
-        if not self.is_admin(user.id):
-            await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        self._register_group_if_needed(chat)
+        
+        # Allow in group or private chat for admins
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return
+        elif chat.type == "private":
+            if not self.is_admin(user.id):
+                await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+                return
+        else:
             return
 
         # Проверяем активные операции
@@ -98,9 +122,9 @@ class ServerCommands(CommandBase):
         await self.operation_manager.start_operation("restart", chat.id, msg.message_id, True)
 
 
-def register_server_handlers(app: Application, facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar=None):
+def register_server_handlers(app: Application, facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar=None, group_registrar=None):
     """Регистрирует команды управления сервером"""
-    commands = ServerCommands(facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar)
+    commands = ServerCommands(facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar, group_registrar)
     
     app.add_handler(CommandHandler("start_server", commands.start_server_command))
     app.add_handler(CommandHandler("stop_server", commands.stop_server_command))

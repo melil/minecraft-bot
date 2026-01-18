@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class SettingsCommands(CommandBase):
     """Команды настроек"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None):
-        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
+    def __init__(self, facade, admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None, group_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
         self.settings_manager = settings_manager
         self.idle_timeout = idle_timeout
     
@@ -23,15 +23,19 @@ class SettingsCommands(CommandBase):
         user = update.effective_user
         chat = update.effective_chat
         
-        # Register user
+        # Register user and group
         self._register_user_if_needed(user)
-
-        if chat.type != "private":
-            await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-            return
-
-        if not self.is_admin(user.id):
-            await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        self._register_group_if_needed(chat)
+        
+        # Allow in group or private chat for admins
+        if chat.type in ["group", "supergroup"]:
+            if not self._is_allowed_group(chat.id):
+                return
+        elif chat.type == "private":
+            if not self.is_admin(user.id):
+                await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+                return
+        else:
             return
 
         auto_status = "🟢 Включено" if self.settings_manager.is_auto_shutdown_enabled() else "🔴 Отключено"
@@ -50,9 +54,9 @@ class SettingsCommands(CommandBase):
         )
 
 
-def register_settings_handlers(app: Application, facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None):
+def register_settings_handlers(app: Application, facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None, group_registrar=None):
     """Регистрирует команды настроек"""
-    commands = SettingsCommands(facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar)
+    commands = SettingsCommands(facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar, group_registrar)
     
     app.add_handler(CommandHandler("settings", commands.settings_command))
     

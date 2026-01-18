@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from .models import Base, User, UserRole
+from .models import Base, User, UserRole, Group
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +171,89 @@ class Database:
         """Check if user is super admin"""
         user = self.get_user_by_telegram_id(telegram_id)
         return user.is_super_admin() if user else False
+
+    def get_or_create_group(
+        self,
+        telegram_id: int,
+        title: Optional[str] = None,
+        username: Optional[str] = None,
+        chat_type: Optional[str] = None
+    ) -> Group:
+        """Get or create group by telegram ID"""
+        session = self.get_session()
+        try:
+            group = session.query(Group).filter(Group.telegram_id == telegram_id).first()
+
+            if group:
+                # Update group info if changed
+                updated = False
+                if title and group.title != title:
+                    group.title = title
+                    updated = True
+                if username and group.username != username:
+                    group.username = username
+                    updated = True
+                if chat_type and group.type != chat_type:
+                    group.type = chat_type
+                    updated = True
+
+                if updated:
+                    session.commit()
+                    session.refresh(group)
+                    logger.info(f"📝 Updated group {telegram_id}")
+
+                return group
+
+            # Create new group
+            group = Group(
+                telegram_id=telegram_id,
+                title=title,
+                username=username,
+                type=chat_type
+            )
+            session.add(group)
+            session.commit()
+            session.refresh(group)
+            logger.info(f"✅ Created new group {telegram_id}: {title}")
+            return group
+
+        finally:
+            session.close()
+
+    def get_group_by_telegram_id(self, telegram_id: int) -> Optional[Group]:
+        """Get group by telegram ID"""
+        session = self.get_session()
+        try:
+            return session.query(Group).filter(Group.telegram_id == telegram_id).first()
+        finally:
+            session.close()
+
+    def is_group_commands_enabled(self, telegram_id: int) -> bool:
+        """Check if commands are enabled for group"""
+        group = self.get_group_by_telegram_id(telegram_id)
+        return group.commands_enabled if group else True  # Default: enabled
+
+    def set_group_commands_enabled(self, telegram_id: int, enabled: bool) -> bool:
+        """Enable/disable commands for group"""
+        session = self.get_session()
+        try:
+            group = session.query(Group).filter(Group.telegram_id == telegram_id).first()
+            if group:
+                group.commands_enabled = enabled
+                session.commit()
+                logger.info(f"✅ Commands {'enabled' if enabled else 'disabled'} for group {telegram_id}")
+                return True
+            return False
+        finally:
+            session.close()
+
+    def get_all_groups(self) -> List[Group]:
+        """Get all groups"""
+        session = self.get_session()
+        try:
+            return session.query(Group).all()
+        finally:
+            session.close()
 
 
 # Global database instance

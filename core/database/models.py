@@ -1,7 +1,7 @@
 """Database models for user management"""
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum, BigInteger, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -19,7 +19,7 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String(255), nullable=True)  # Telegram username
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
@@ -57,3 +57,29 @@ class User(Base):
         if self.username:
             return f"https://t.me/{self.username}"
         return f"tg://user?id={self.telegram_id}"
+
+
+class Group(Base):
+    """Group/Chat model"""
+    __tablename__ = 'groups'
+
+    id = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    title = Column(String(255), nullable=True)
+    username = Column(String(255), nullable=True)  # Group username if exists
+    type = Column(String(50), nullable=True)  # group, supergroup, channel
+    is_active = Column(Boolean, default=True)
+    commands_enabled = Column(Boolean, default=True)  # Allow commands in this group
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Group(telegram_id={self.telegram_id}, title={self.title})>"
+
+    def get_display_name(self) -> str:
+        """Get group display name"""
+        if self.title:
+            return self.title
+        if self.username:
+            return f"@{self.username}"
+        return f"Group {self.telegram_id}"

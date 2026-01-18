@@ -16,7 +16,7 @@ from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
 from core.api.regru import RegRuClient
-from core.database import get_db, User, UserRole
+from core.database import get_db, User, UserRole, Group
 
 # Импортируем регистраторы команд
 from core.bot.commands import (
@@ -93,6 +93,19 @@ def register_or_update_user(user_obj) -> User:
         first_name=user_obj.first_name,
         last_name=user_obj.last_name,
         auto_promote_ids=ADMIN_IDS_FOR_AUTO_PROMOTION
+    )
+
+
+def register_or_update_group(chat_obj) -> Group:
+    """Register or update group in database"""
+    if not chat_obj or chat_obj.type == "private":
+        return None
+    
+    return db.get_or_create_group(
+        telegram_id=chat_obj.id,
+        title=chat_obj.title,
+        username=chat_obj.username,
+        chat_type=chat_obj.type
     )
 
 
@@ -470,6 +483,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Register or update user in database
     register_or_update_user(user)
     
+    # Register group if in group
+    if chat.type in ["group", "supergroup"]:
+        register_or_update_group(chat)
+    
     # Логика прав доступа:
     # - В группе: все участники группы могут нажимать кнопки
     # - В личке: только админы могут нажимать кнопки управления
@@ -750,7 +767,8 @@ def main():
         is_admin,
         keyboard_builder,
         lambda: idle_monitoring_enabled,
-        register_or_update_user
+        register_or_update_user,
+        register_or_update_group
     )
     
     register_server_handlers(
@@ -759,7 +777,8 @@ def main():
         is_admin,
         keyboard_builder,
         operation_manager,
-        register_or_update_user
+        register_or_update_user,
+        register_or_update_group
     )
     
     register_admin_handlers(
@@ -768,7 +787,8 @@ def main():
         is_admin,
         keyboard_builder,
         admin_manager,
-        register_or_update_user
+        register_or_update_user,
+        register_or_update_group
     )
     
     register_settings_handlers(
@@ -778,7 +798,8 @@ def main():
         keyboard_builder,
         settings_manager,
         IDLE_SHUTDOWN_TIMEOUT,
-        register_or_update_user
+        register_or_update_user,
+        register_or_update_group
     )
     
     register_balance_handlers(
@@ -787,7 +808,8 @@ def main():
         is_admin,
         keyboard_builder,
         balance_keyboard_builder,
-        register_or_update_user
+        register_or_update_user,
+        register_or_update_group
     )
 
     # Регистрируем обработчик кнопок

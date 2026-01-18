@@ -14,15 +14,21 @@ logger = logging.getLogger(__name__)
 class BalanceCommands(CommandBase):
     """Команды баланса"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None):
-        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
+    def __init__(self, facade, admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None, group_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
         self.get_balance_keyboard = balance_keyboard_builder
     
     async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /balance"""
         user = update.effective_user
-        # Register user
+        chat = update.effective_chat
+        # Register user and group
         self._register_user_if_needed(user)
+        self._register_group_if_needed(chat)
+        
+        # In group - check if allowed
+        if chat.type in ["group", "supergroup"] and not self._is_allowed_group(chat.id):
+            return
         
         msg = await update.message.reply_text("⏳ Получаю информацию о балансе...")
         
@@ -61,9 +67,9 @@ class BalanceCommands(CommandBase):
             await msg.edit_text(f"❌ Ошибка при получении информации: {e}")
 
 
-def register_balance_handlers(app: Application, facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None):
+def register_balance_handlers(app: Application, facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None, group_registrar=None):
     """Регистрирует команды баланса"""
-    commands = BalanceCommands(facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar)
+    commands = BalanceCommands(facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar, group_registrar)
     
     app.add_handler(CommandHandler("balance", commands.balance_command))
     
