@@ -295,9 +295,9 @@ class MinecraftLogMonitor:
         try:
             client = SSHClient(**self.ssh_config)
             
-            # Получаем последние 50 строк логов (за последние 10 секунд для уменьшения нагрузки)
-            # Используем journalctl с follow для реального времени
-            command = f"journalctl -u minecraft.service --since '{self.check_interval + 5} seconds ago' --no-pager -n 50 2>/dev/null || echo ''"
+            # Получаем последние 50 строк логов
+            # Используем --output=cat чтобы получить полные строки без обрезания
+            command = f"journalctl -u minecraft.service --since '{self.check_interval + 5} seconds ago' --no-pager --output=cat -n 50 2>/dev/null || echo ''"
             logger.debug(f"📜 Выполнение: {command}")
             
             result = await client.execute(command, timeout=10)
