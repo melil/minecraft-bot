@@ -77,12 +77,14 @@ def register_chat_handlers(
             success = await say(minecraft_ssh_config, message, sender=sender_name)
             
             if success:
-                await update.message.reply_text(
-                    f"✅ Сообщение отправлено в Minecraft чат!\n\n"
-                    f"📤 <b>От:</b> {sender_name}\n"
-                    f"💬 <b>Текст:</b> {message}",
-                    parse_mode="HTML"
-                )
+                # Отправляем подтверждение только в личку, в группе молча
+                if chat.type == "private":
+                    await update.message.reply_text(
+                        f"✅ Сообщение отправлено в Minecraft чат!\n\n"
+                        f"📤 <b>От:</b> {sender_name}\n"
+                        f"💬 <b>Текст:</b> {message}",
+                        parse_mode="HTML"
+                    )
                 logger.info(f"✉️ {sender_name} отправил сообщение в MC: {message}")
             else:
                 await update.message.reply_text(
