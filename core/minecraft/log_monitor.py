@@ -271,17 +271,21 @@ class MinecraftLogMonitor:
     
     async def _monitor_loop(self):
         """Основной цикл мониторинга"""
+        logger.info(f"🔄 Мониторинг логов: цикл запущен (интервал: {self.check_interval}с)")
         try:
+            iteration = 0
             while self.is_running:
                 try:
+                    iteration += 1
+                    logger.debug(f"📝 Мониторинг логов: итерация {iteration}")
                     await self._check_logs()
                 except Exception as e:
-                    logger.error(f"Ошибка в цикле мониторинга логов: {e}")
+                    logger.error(f"❌ Ошибка в цикле мониторинга логов: {e}", exc_info=True)
                 
                 await asyncio.sleep(self.check_interval)
         
         except asyncio.CancelledError:
-            logger.info("Мониторинг логов отменён")
+            logger.info("🛑 Мониторинг логов: цикл отменён")
     
     async def _check_logs(self):
         """Проверяет новые записи в логах"""
@@ -290,18 +294,22 @@ class MinecraftLogMonitor:
             
             # Получаем последние 50 строк логов (за последние 10 секунд для уменьшения нагрузки)
             # Используем journalctl с follow для реального времени
-            result = await client.execute(
-                f"journalctl -u minecraft.service --since '{self.check_interval + 5} seconds ago' "
-                f"--no-pager -n 50 2>/dev/null || echo ''",
-                timeout=10
-            )
+            command = f"journalctl -u minecraft.service --since '{self.check_interval + 5} seconds ago' --no-pager -n 50 2>/dev/null || echo ''"
+            logger.debug(f"📜 Выполнение: {command}")
+            
+            result = await client.execute(command, timeout=10)
+            
+            logger.debug(f"📋 Получено логов: {len(result)} символов")
             
             if not result or result.strip() == '':
+                logger.debug("⏭️ Логи пусты, пропуск")
                 return
             
             lines = result.strip().split('\n')
+            logger.debug(f"📄 Обработка {len(lines)} строк логов")
             
             # Обрабатываем каждую строку
+            new_events = 0
             for line in lines:
                 # Пропускаем пустые строки
                 if not line.strip():
@@ -315,19 +323,24 @@ class MinecraftLogMonitor:
                 event = self.parser.parse_line(line)
                 
                 if event:
+                    new_events += 1
+                    logger.info(f"🎯 Найдено событие: {event.event_type} ({event.player_name if hasattr(event, 'player_name') else 'N/A'})")
                     # Вызываем callback для обработки события
                     try:
                         await self.event_callback(event)
-                        logger.debug(f"✅ Событие обработано: {event.event_type}")
+                        logger.info(f"✅ Событие обработано: {event.event_type}")
                     except Exception as e:
-                        logger.error(f"Ошибка в callback обработчике события: {e}")
+                        logger.error(f"❌ Ошибка в callback обработчике события: {e}", exc_info=True)
+            
+            if new_events > 0:
+                logger.info(f"📊 Обработано новых событий: {new_events}")
             
             # Сохраняем последнюю строку
             if lines:
                 self.last_log_line = lines[-1]
         
         except Exception as e:
-            logger.debug(f"Ошибка проверки логов: {e}")
+            logger.error(f"❌ Ошибка проверки логов: {e}", exc_info=True)
 
 
 # ==================== УТИЛИТЫ ====================

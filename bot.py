@@ -320,33 +320,41 @@ async def minecraft_event_handler(event):
     Обработчик событий из Minecraft (вход/выход, чат, смерти, достижения)
     Отправляет события в группу Telegram
     """
+    logger.debug(f"🎯 Получено событие: {event.event_type}")
+    
     if not bot_application:
+        logger.warning("⚠️ bot_application не инициализирован!")
         return
     
     # Сообщения с префиксом "tg" отправляются ВСЕГДА, независимо от настроек
     if event.event_type == 'telegram':
+        logger.info(f"📨 Обработка tg-сообщения от {event.player_name}")
         try:
             from core.minecraft.log_monitor import format_event_for_telegram
             message = format_event_for_telegram(event)
             
+            logger.info(f"📤 Отправка в группу {NOTIFICATION_GROUP_ID}: {message}")
             await bot_application.bot.send_message(
                 chat_id=NOTIFICATION_GROUP_ID,
                 text=message,
                 parse_mode="HTML"
             )
-            logger.info(f"📨 Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
+            logger.info(f"✅ Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
         except Exception as e:
-            logger.error(f"Ошибка отправки tg-сообщения: {e}")
+            logger.error(f"❌ Ошибка отправки tg-сообщения: {e}", exc_info=True)
         return
     
     # Для остальных событий проверяем, включен ли мониторинг
     if not log_monitoring_enabled:
+        logger.debug(f"⏭️ Мониторинг выключен, событие {event.event_type} пропущено")
         return
     
     # Проверяем, включен ли данный тип события
     if not MINECRAFT_EVENTS_CONFIG.get(event.event_type, False):
+        logger.debug(f"⏭️ Тип события {event.event_type} отключен в конфиге")
         return
     
+    logger.info(f"📬 Отправка события {event.event_type} в Telegram")
     try:
         from core.minecraft.log_monitor import send_event_to_telegram
         
@@ -357,31 +365,35 @@ async def minecraft_event_handler(event):
             MINECRAFT_EVENTS_CONFIG
         )
     except Exception as e:
-        logger.error(f"Ошибка обработки события Minecraft: {e}")
+        logger.error(f"❌ Ошибка обработки события Minecraft: {e}", exc_info=True)
 
 
 async def start_log_monitoring():
     """Запускает мониторинг логов Minecraft"""
     global log_monitor
     
+    logger.info("🚀 Запуск мониторинга логов Minecraft...")
+    
     if log_monitor and log_monitor.is_running:
-        logger.warning("Мониторинг логов уже запущен")
+        logger.warning("⚠️ Мониторинг логов уже запущен")
         return
     
     try:
         from core.minecraft.log_monitor import MinecraftLogMonitor
         
+        logger.info(f"📝 Создание MinecraftLogMonitor с интервалом 2с")
         log_monitor = MinecraftLogMonitor(
             ssh_config=MINECRAFT_SERVER_SSH,
             event_callback=minecraft_event_handler,
             check_interval=2  # Проверка каждые 2 секунды
         )
         
+        logger.info("▶️ Вызов log_monitor.start()...")
         await log_monitor.start()
-        logger.info("✅ Мониторинг логов Minecraft запущен")
+        logger.info(f"✅ Мониторинг логов Minecraft запущен (is_running={log_monitor.is_running})")
         
     except Exception as e:
-        logger.error(f"Ошибка запуска мониторинга логов: {e}")
+        logger.error(f"❌ Ошибка запуска мониторинга логов: {e}", exc_info=True)
 
 
 async def stop_log_monitoring():
