@@ -622,12 +622,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ========== ОТВЕТ НА СООБЩЕНИЕ ИЗ MINECRAFT ==========
     if data.startswith("reply_mc:"):
+        from telegram import ForceReply
         player_name = data.split(":", 1)[1]
-        reply_text = f"💬 Чтобы ответить игроку <b>{player_name}</b>, используйте:\n\n<code>/say {player_name} ваш_текст</code>\n\n📋 Нажмите на команду, чтобы скопировать"
-        await query.answer(
-            text=f"Используйте: /say {player_name} ваш_текст",
-            show_alert=True
+        
+        # Отправляем сообщение с force reply
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=f"💬 Ответ для <b>{player_name}</b>:\n\nОтправьте команду в формате:\n<code>/say {player_name} ваш_текст</code>",
+            parse_mode="HTML",
+            reply_markup=ForceReply(
+                input_field_placeholder=f"/say {player_name} ",
+                selective=True
+            ),
+            reply_to_message_id=query.message.message_id
         )
+        
+        await query.answer("💬 Напишите ответ ниже")
         return
     
     # Отвечаем на callback для остальных кнопок
