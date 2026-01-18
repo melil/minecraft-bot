@@ -41,7 +41,7 @@ class ServerStatus:
     names: Optional[List[str]] = None
 
     @staticmethod
-    def format_server_status(status: 'ServerStatus') -> str:
+    def format_server_status(status: 'ServerStatus', monitoring_enabled: bool) -> str:
         """Форматирует статус сервера для отображения"""
         state_emoji = {
             ServerState.OFF: "⚫",
@@ -57,6 +57,9 @@ class ServerStatus:
             ServerState.READY: "Работает"
         }
 
+        monitoring_status = "<b>Мониторинг:</b> 🟢 Включен" if monitoring_enabled else "<b>Мониторинг:</b> 🔴 Выключен"
+
+
         emoji = state_emoji.get(status.state, "⚪")
         text = state_text.get(status.state, "Неизвестно")
 
@@ -69,6 +72,9 @@ class ServerStatus:
             result += f"⏱️ <b>Uptime:</b> {status.uptime}\n"
         else:
             result += f"⏱️ <b>Uptime:</b> N/A\n"
+
+        if status.minecraft_active:
+            result += monitoring_status
 
         if status.state == ServerState.READY and status.minecraft_active:
             result += f"\n🎮 <b>Minecraft:</b> Активен\n"

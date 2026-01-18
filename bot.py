@@ -817,7 +817,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "status":
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
-        text = ServerStatus.format_server_status(result)
+        text = ServerStatus.format_server_status(result, idle_monitoring_enabled)
         keyboard = await get_dynamic_keyboard(show_admin)
         await query.edit_message_text(
             text,
