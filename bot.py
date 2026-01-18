@@ -326,12 +326,12 @@ async def minecraft_event_handler(event):
         logger.warning("⚠️ bot_application не инициализирован!")
         return
     
-    # Сообщения с префиксом "tg" отправляются ВСЕГДА, независимо от настроек
-    if event.event_type == 'telegram':
-        logger.info(f"📨 Обработка tg-сообщения от {event.player_name}")
+    # Сообщения с префиксом "telegram:" отправляются ВСЕГДА, независимо от настроек
+    if event.event_type == 'telegram_message':
+        logger.info(f"📨 Обработка telegram-сообщения от {event.player_name}")
         try:
-            from core.minecraft.log_monitor import format_event_for_telegram
-            message = format_event_for_telegram(event)
+            # Используем встроенный метод форматирования
+            message = event.format_telegram()
             
             logger.info(f"📤 Отправка в группу {NOTIFICATION_GROUP_ID}: {message}")
             await bot_application.bot.send_message(
@@ -341,7 +341,7 @@ async def minecraft_event_handler(event):
             )
             logger.info(f"✅ Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки tg-сообщения: {e}", exc_info=True)
+            logger.error(f"❌ Ошибка отправки telegram-сообщения: {e}", exc_info=True)
         return
     
     # Для остальных событий проверяем, включен ли мониторинг
