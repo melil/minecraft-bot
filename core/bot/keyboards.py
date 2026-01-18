@@ -70,14 +70,19 @@ async def get_dynamic_keyboard(
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_settings_keyboard(idle_monitoring_enabled: bool) -> InlineKeyboardMarkup:
+def get_settings_keyboard(idle_monitoring_enabled: bool, log_monitoring_enabled: bool = False) -> InlineKeyboardMarkup:
     """Клавиатура настроек"""
     auto_status = "🟢 ВКЛ" if idle_monitoring_enabled else "🔴 ВЫКЛ"
+    log_status = "🟢 ВКЛ" if log_monitoring_enabled else "🔴 ВЫКЛ"
 
     keyboard = [
         [InlineKeyboardButton(
             f"⏱️ Автовыключение: {auto_status}",
             callback_data="toggle_auto_shutdown"
+        )],
+        [InlineKeyboardButton(
+            f"📜 Мониторинг событий MC: {log_status}",
+            callback_data="toggle_log_monitoring"
         )],
         [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
     ]

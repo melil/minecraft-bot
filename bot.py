@@ -24,7 +24,8 @@ from core.bot.commands import (
     register_server_handlers,
     register_admin_handlers,
     register_settings_handlers,
-    register_balance_handlers
+    register_balance_handlers,
+    register_chat_handlers
 )
 from core.bot.commands.managers import OperationManager, AdminManager, SettingsManager
 from core.bot.keyboards import get_dynamic_keyboard, get_settings_keyboard, get_popup_balance_keyboard
@@ -61,6 +62,20 @@ idle_monitoring_active = False
 idle_monitoring_enabled = True  # ✅ Флаг включения/выключения автовыключения
 monitoring_task = None
 bot_application = None  # ✅ Глобальная ссылка на Application
+
+# ==================== MINECRAFT LOG MONITORING ====================
+# Система мониторинга событий из Minecraft (вход/выход, чат, смерти, достижения)
+log_monitor = None  # Объект MonitorLogMonitor
+log_monitoring_enabled = False  # ✅ Флаг включения/выключения мониторинга логов (пока выключено)
+
+# Настройки отображения событий (можно включать/выключать отдельно)
+MINECRAFT_EVENTS_CONFIG = {
+    'join': True,      # Вход игроков
+    'leave': True,     # Выход игроков
+    'chat': True,      # Сообщения в чате
+    'death': True,     # Смерти
+    'achievement': True  # Достижения
+}
 
 # ==================== БЛОКИРОВКА ОПЕРАЦИЙ ====================
 active_operations = {}  # {chat_id: {task, operation_type, message_id}}
@@ -298,6 +313,76 @@ def toggle_auto_shutdown() -> bool:
     return idle_monitoring_enabled
 
 
+# ==================== MINECRAFT LOG MONITORING ====================
+
+async def minecraft_event_handler(event):
+    """
+    Обработчик событий из Minecraft (вход/выход, чат, смерти, достижения)
+    Отправляет события в группу Telegram
+    """
+    if not log_monitoring_enabled or not bot_application:
+        return
+    
+    # Проверяем, включен ли данный тип события
+    if not MINECRAFT_EVENTS_CONFIG.get(event.event_type, False):
+        return
+    
+    try:
+        from core.minecraft.log_monitor import send_event_to_telegram
+        
+        await send_event_to_telegram(
+            event,
+            bot_application,
+            NOTIFICATION_GROUP_ID,
+            MINECRAFT_EVENTS_CONFIG
+        )
+    except Exception as e:
+        logger.error(f"Ошибка обработки события Minecraft: {e}")
+
+
+async def start_log_monitoring():
+    """Запускает мониторинг логов Minecraft"""
+    global log_monitor
+    
+    if log_monitor and log_monitor.is_running:
+        logger.warning("Мониторинг логов уже запущен")
+        return
+    
+    try:
+        from core.minecraft.log_monitor import MinecraftLogMonitor
+        
+        log_monitor = MinecraftLogMonitor(
+            ssh_config=MINECRAFT_SERVER_SSH,
+            event_callback=minecraft_event_handler,
+            check_interval=2  # Проверка каждые 2 секунды
+        )
+        
+        await log_monitor.start()
+        logger.info("✅ Мониторинг логов Minecraft запущен")
+        
+    except Exception as e:
+        logger.error(f"Ошибка запуска мониторинга логов: {e}")
+
+
+async def stop_log_monitoring():
+    """Останавливает мониторинг логов Minecraft"""
+    global log_monitor
+    
+    if log_monitor:
+        await log_monitor.stop()
+        log_monitor = None
+        logger.info("🛑 Мониторинг логов Minecraft остановлен")
+
+
+def toggle_log_monitoring() -> bool:
+    """Переключает режим мониторинга логов"""
+    global log_monitoring_enabled
+    
+    log_monitoring_enabled = not log_monitoring_enabled
+    logger.info(f"🔄 Мониторинг логов {'включен' if log_monitoring_enabled else 'отключен'}")
+    return log_monitoring_enabled
+
+
 # ==================== УПРАВЛЕНИЕ ОПЕРАЦИЯМИ ====================
 
 def is_operation_active(chat_id: int) -> bool:
@@ -410,8 +495,13 @@ async def perform_server_operation(
                 # Управление мониторингом
                 if operation_type == "start" or operation_type == "restart":
                     start_idle_monitoring()
+                    # Запускаем мониторинг логов если включен
+                    if log_monitoring_enabled:
+                        await start_log_monitoring()
                 elif operation_type == "stop":
                     stop_idle_monitoring()
+                    # Останавливаем мониторинг логов
+                    await stop_log_monitoring()
 
                 # Финальное сообщение
                 await bot_application.bot.edit_message_text(
@@ -521,15 +611,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         auto_status = "🟢 Включено" if idle_monitoring_enabled else "🔴 Отключено"
+        log_status = "🟢 Включен" if log_monitoring_enabled else "🔴 Отключен"
         settings_text = (
             "⚙️ <b>Настройки сервера</b>\n\n"
             f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
+            f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
             settings_text,
-            reply_markup=get_settings_keyboard(idle_monitoring_enabled),
+            reply_markup=get_settings_keyboard(idle_monitoring_enabled, log_monitoring_enabled),
             parse_mode="HTML"
         )
 
@@ -576,15 +669,63 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Обновляем меню настроек
         auto_status = "🟢 Включено" if new_state else "🔴 Отключено"
+        log_status = "🟢 Включен" if log_monitoring_enabled else "🔴 Отключен"
         settings_text = (
             "⚙️ <b>Настройки сервера</b>\n\n"
             f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
+            f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
             settings_text,
-            reply_markup=get_settings_keyboard(new_state),
+            reply_markup=get_settings_keyboard(new_state, log_monitoring_enabled),
+            parse_mode="HTML"
+        )
+    
+    # ========== ПЕРЕКЛЮЧЕНИЕ МОНИТОРИНГА ЛОГОВ ==========
+    elif data == "toggle_log_monitoring":
+        if not show_admin:
+            await query.answer("❌ У вас нет прав", show_alert=True)
+            return
+        
+        new_state = toggle_log_monitoring()
+        status_emoji = "🟢" if new_state else "🔴"
+        status_text = "включен" if new_state else "отключен"
+        
+        await query.answer(f"{status_emoji} Мониторинг логов {status_text}", show_alert=True)
+        
+        # Запускаем или останавливаем мониторинг в зависимости от состояния сервера
+        try:
+            from core.minecraft.service import is_ready
+            server_ready = await is_ready(MINECRAFT_SERVER_SSH)
+            
+            if new_state and server_ready:
+                # Включаем мониторинг если сервер работает
+                await start_log_monitoring()
+                logger.info("✅ Мониторинг логов запущен (переключен пользователем)")
+            elif not new_state:
+                # Выключаем мониторинг
+                await stop_log_monitoring()
+                logger.info("🛑 Мониторинг логов остановлен (переключен пользователем)")
+        except Exception as e:
+            logger.error(f"Ошибка переключения мониторинга логов: {e}")
+        
+        # Обновляем меню настроек
+        auto_status = "🟢 Включено" if idle_monitoring_enabled else "🔴 Отключено"
+        log_status = "🟢 Включен" if new_state else "🔴 Отключен"
+        settings_text = (
+            "⚙️ <b>Настройки сервера</b>\n\n"
+            f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
+            f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
+            f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
+            "Используйте кнопки ниже для изменения настроек:"
+        )
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=get_settings_keyboard(idle_monitoring_enabled, new_state),
             parse_mode="HTML"
         )
 
@@ -659,6 +800,10 @@ async def post_init(application: Application) -> None:
         if status.state == ServerState.READY:
             logger.info("✅ Сервер работает, запускаю мониторинг")
             start_idle_monitoring()
+            
+            # Запускаем мониторинг логов если включен
+            if log_monitoring_enabled:
+                await start_log_monitoring()
         else:
             logger.info(f"⏸️ Сервер в состоянии {status.state}, мониторинг не запущен")
 
@@ -672,6 +817,9 @@ async def post_shutdown(application: Application) -> None:
     """
     logger.info("🛑 Останавливаю бот...")
     stop_idle_monitoring()
+    
+    # Останавливаем мониторинг логов
+    await stop_log_monitoring()
 
     # Отменяем все активные операции
     for chat_id in list(active_operations.keys()):
@@ -744,7 +892,7 @@ def main():
     settings_manager = SettingsManager(
         toggle_auto_shutdown,
         lambda: idle_monitoring_enabled,
-        lambda: get_settings_keyboard(idle_monitoring_enabled)
+        lambda: get_settings_keyboard(idle_monitoring_enabled, log_monitoring_enabled)
     )
     
     # Обертки для клавиатур
@@ -808,6 +956,18 @@ def main():
         is_admin,
         keyboard_builder,
         balance_keyboard_builder,
+        register_or_update_user,
+        register_or_update_group
+    )
+    
+    register_chat_handlers(
+        application,
+        facade,
+        is_admin,
+        is_super_admin,
+        keyboard_builder,
+        MINECRAFT_SERVER_SSH,
+        lambda: idle_monitoring_enabled,
         register_or_update_user,
         register_or_update_group
     )
