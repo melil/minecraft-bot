@@ -14,12 +14,16 @@ logger = logging.getLogger(__name__)
 class BalanceCommands(CommandBase):
     """Команды баланса"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, balance_keyboard_builder):
-        super().__init__(facade, admin_checker, keyboard_builder)
+    def __init__(self, facade, admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
         self.get_balance_keyboard = balance_keyboard_builder
     
     async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /balance"""
+        user = update.effective_user
+        # Register user
+        self._register_user_if_needed(user)
+        
         msg = await update.message.reply_text("⏳ Получаю информацию о балансе...")
         
         try:
@@ -57,9 +61,9 @@ class BalanceCommands(CommandBase):
             await msg.edit_text(f"❌ Ошибка при получении информации: {e}")
 
 
-def register_balance_handlers(app: Application, facade, is_admin_checker, keyboard_builder, balance_keyboard_builder):
+def register_balance_handlers(app: Application, facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar=None):
     """Регистрирует команды баланса"""
-    commands = BalanceCommands(facade, is_admin_checker, keyboard_builder, balance_keyboard_builder)
+    commands = BalanceCommands(facade, is_admin_checker, keyboard_builder, balance_keyboard_builder, user_registrar)
     
     app.add_handler(CommandHandler("balance", commands.balance_command))
     

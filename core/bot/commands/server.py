@@ -13,14 +13,17 @@ logger = logging.getLogger(__name__)
 class ServerCommands(CommandBase):
     """Команды управления сервером"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, operation_manager):
-        super().__init__(facade, admin_checker, keyboard_builder)
+    def __init__(self, facade, admin_checker, keyboard_builder, operation_manager, user_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
         self.operation_manager = operation_manager
     
     async def start_server_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start_server (только для админов в ЛС)"""
         chat = update.effective_chat
         user = update.effective_user
+        
+        # Register user
+        self._register_user_if_needed(user)
 
         if not self.is_admin(user.id):
             await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
@@ -46,6 +49,9 @@ class ServerCommands(CommandBase):
         """Обработчик команды /stop_server (только для админов в ЛС)"""
         chat = update.effective_chat
         user = update.effective_user
+        
+        # Register user
+        self._register_user_if_needed(user)
 
         if not self.is_admin(user.id):
             await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
@@ -69,6 +75,9 @@ class ServerCommands(CommandBase):
         """Обработчик команды /restart_server (только для админов в ЛС)"""
         chat = update.effective_chat
         user = update.effective_user
+        
+        # Register user
+        self._register_user_if_needed(user)
 
         if not self.is_admin(user.id):
             await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
@@ -89,9 +98,9 @@ class ServerCommands(CommandBase):
         await self.operation_manager.start_operation("restart", chat.id, msg.message_id, True)
 
 
-def register_server_handlers(app: Application, facade, is_admin_checker, keyboard_builder, operation_manager):
+def register_server_handlers(app: Application, facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar=None):
     """Регистрирует команды управления сервером"""
-    commands = ServerCommands(facade, is_admin_checker, keyboard_builder, operation_manager)
+    commands = ServerCommands(facade, is_admin_checker, keyboard_builder, operation_manager, user_registrar)
     
     app.add_handler(CommandHandler("start_server", commands.start_server_command))
     app.add_handler(CommandHandler("stop_server", commands.stop_server_command))

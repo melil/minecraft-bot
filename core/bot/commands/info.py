@@ -15,14 +15,17 @@ logger = logging.getLogger(__name__)
 class InfoCommands(CommandBase):
     """Информационные команды"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, idle_monitoring_enabled_getter):
-        super().__init__(facade, admin_checker, keyboard_builder)
+    def __init__(self, facade, admin_checker, keyboard_builder, idle_monitoring_enabled_getter, user_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
         self.get_idle_monitoring_enabled = idle_monitoring_enabled_getter
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         user = update.effective_user
         chat = update.effective_chat
+        
+        # Register user
+        self._register_user_if_needed(user)
 
         if chat.type == "private":
             show_admin = self.is_admin(user.id)
@@ -41,10 +44,12 @@ class InfoCommands(CommandBase):
                     "/stop_server - остановить сервер\n"
                     "/restart_server - перезагрузить сервер\n"
                     "/settings - настройки автовыключения\n"
-                    "/add_admin <id> - добавить администратора\n"
-                    "/list_admins - список администраторов\n"
-                    "/del_admin <id> - удалить администратора\n"
-                )
+                "/add_admin <id> - добавить администратора\n"
+                "/list_admins - список администраторов\n"
+                "/del_admin <id> - удалить администратора\n"
+                "/set_minecraft_nick <ник> - установить Minecraft ник\n"
+                "/promote_super_admin <id> - повысить до супер-админа\n"
+            )
             welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
             keyboard = await self.get_keyboard(show_admin)
             await update.message.reply_text(welcome_text, reply_markup=keyboard)
@@ -59,6 +64,7 @@ class InfoCommands(CommandBase):
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
         user = update.effective_user
+        self._register_user_if_needed(user)
         show_admin = self.is_admin(user.id)
         
         help_text = (
@@ -82,6 +88,9 @@ class InfoCommands(CommandBase):
                 "• /add_admin &lt;id&gt; - добавить администратора\n"
                 "• /del_admin &lt;id&gt; - удалить администратора\n"
                 "• /list_admins - список администраторов\n"
+                "• /set_minecraft_nick &lt;ник&gt; - установить свой Minecraft ник\n"
+                "• /set_minecraft_nick &lt;id&gt; &lt;ник&gt; - установить ник пользователю\n"
+                "• /promote_super_admin &lt;id&gt; - повысить до супер-админа (только для супер-админов)\n"
                 "\n<b>🎛️ Доступные кнопки:</b>\n"
                 "• 📊 Статус - текущий статус сервера\n"
                 "• 💵 Пополнить - информация о пополнении\n"
@@ -102,6 +111,7 @@ class InfoCommands(CommandBase):
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /status"""
         user = update.effective_user
+        self._register_user_if_needed(user)
         show_admin = self.is_admin(user.id) and update.effective_chat.type == "private"
 
         keyboard = await self.get_keyboard(show_admin)
@@ -120,6 +130,9 @@ class InfoCommands(CommandBase):
 
     async def players_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /players (доступна всем)"""
+        user = update.effective_user
+        self._register_user_if_needed(user)
+        
         status_msg = await update.message.reply_text(
             "⏳ Проверяю статус сервера...",
             parse_mode="HTML",
@@ -153,9 +166,9 @@ class InfoCommands(CommandBase):
         await update.message.reply_text("🏓 Понг! Бот работает.")
 
 
-def register_info_handlers(app: Application, facade, is_admin_checker, keyboard_builder, idle_monitoring_getter):
+def register_info_handlers(app: Application, facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar=None):
     """Регистрирует информационные команды"""
-    commands = InfoCommands(facade, is_admin_checker, keyboard_builder, idle_monitoring_getter)
+    commands = InfoCommands(facade, is_admin_checker, keyboard_builder, idle_monitoring_getter, user_registrar)
     
     app.add_handler(CommandHandler("start", commands.start_command))
     app.add_handler(CommandHandler("help", commands.help_command))

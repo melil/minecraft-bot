@@ -16,6 +16,7 @@ from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
 from core.api.regru import RegRuClient
+from core.database import get_db, User, UserRole
 
 # Импортируем регистраторы команд
 from core.bot.commands import (
@@ -31,15 +32,25 @@ from core.bot.keyboards import get_dynamic_keyboard, get_settings_keyboard, get_
 reg_ru_api = RegRuClient(REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID)
 facade = ServerFacade(reg_ru_api)
 
-ADMIN_IDS_FILE = "/root/minecraft-bot/admins.txt"
+# ==================== DATABASE ====================
+db = get_db()
 
 # ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
 ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
 ENABLE_GROUP_NOTIFICATIONS = True  # ✅ Включить/выключить уведомления в группу
 NOTIFICATION_GROUP_ID = -5142213077  # ✅ ID группы для уведомлений (например: -1001234567890)
 
-# Глобальные переменные
-ADMIN_USER_IDS = set()
+# ==================== ADMIN IDS FOR AUTO-PROMOTION ====================
+# These IDs will be auto-promoted to admin on first interaction
+ADMIN_IDS_FOR_AUTO_PROMOTION = [
+    138349349,
+    140821964,
+    451548653,
+    78120051,
+    851242077,
+    505878676,
+    860938417,
+]
 
 # ==================== IDLE SHUTDOWN СИСТЕМА ====================
 IDLE_SHUTDOWN_TIMEOUT = 600  # 5 минут в секундах
@@ -71,33 +82,28 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 
-def load_admin_ids():
-    """Загружает список администраторов из файла"""
-    global ADMIN_USER_IDS
-    try:
-        if os.path.exists(ADMIN_IDS_FILE):
-            with open(ADMIN_IDS_FILE, 'r') as f:
-                ADMIN_USER_IDS = set(int(line.strip()) for line in f if line.strip())
-        else:
-            with open(ADMIN_IDS_FILE, 'w') as f:
-                pass
-    except Exception as e:
-        logger.error(f"Ошибка загрузки admin IDs: {e}")
-
-
-def save_admin_ids():
-    """Сохраняет список администраторов в файле"""
-    try:
-        with open(ADMIN_IDS_FILE, 'w') as f:
-            for admin_id in ADMIN_USER_IDS:
-                f.write(f"{admin_id}\n")
-    except Exception as e:
-        logger.error(f"Ошибка сохранения admin IDs: {e}")
+def register_or_update_user(user_obj) -> User:
+    """Register or update user in database"""
+    if not user_obj:
+        return None
+    
+    return db.get_or_create_user(
+        telegram_id=user_obj.id,
+        username=user_obj.username,
+        first_name=user_obj.first_name,
+        last_name=user_obj.last_name,
+        auto_promote_ids=ADMIN_IDS_FOR_AUTO_PROMOTION
+    )
 
 
 def is_admin(user_id: int) -> bool:
     """Проверяет, является ли пользователь администратором"""
-    return user_id == 78120051 or user_id in ADMIN_USER_IDS
+    return db.is_admin(user_id)
+
+
+def is_super_admin(user_id: int) -> bool:
+    """Проверяет, является ли пользователь супер администратором"""
+    return db.is_super_admin(user_id)
 
 
 # ==================== УВЕДОМЛЕНИЯ ====================
@@ -107,15 +113,16 @@ async def notify_admins(text: str):
     if not ENABLE_ADMIN_NOTIFICATIONS or not bot_application:
         return
 
-    for admin_id in ADMIN_USER_IDS | {78120051}:
+    admins = db.get_all_admins()
+    for admin in admins:
         try:
             await bot_application.bot.send_message(
-                chat_id=admin_id,
+                chat_id=admin.telegram_id,
                 text=text,
                 parse_mode="HTML"
             )
         except Exception as e:
-            logger.error(f"Не удалось уведомить админа {admin_id}: {e}")
+            logger.error(f"Не удалось уведомить админа {admin.telegram_id}: {e}")
 
 
 async def notify_group(text: str):
@@ -460,6 +467,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
+    # Register or update user in database
+    register_or_update_user(user)
+    
     # Логика прав доступа:
     # - В группе: все участники группы могут нажимать кнопки
     # - В личке: только админы могут нажимать кнопки управления
@@ -657,8 +667,6 @@ def main():
     """Запуск бота"""
     global bot_application
 
-    load_admin_ids()
-
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # ✅ Регистрируем хуки жизненного цикла
@@ -667,7 +675,55 @@ def main():
 
     # ✅ Создаем менеджеры
     operation_manager = OperationManager(active_operations, perform_server_operation)
-    admin_manager = AdminManager(ADMIN_USER_IDS, save_admin_ids)
+    
+    # Create database-based admin manager
+    class DatabaseAdminManager:
+        """Database-based admin manager"""
+        def add_admin(self, telegram_id: int):
+            # First, ensure user exists
+            user = db.get_user_by_telegram_id(telegram_id)
+            if not user:
+                # Create user if doesn't exist
+                user = db.get_or_create_user(telegram_id, auto_promote_ids=[])
+            db.update_user_role(telegram_id, UserRole.ADMIN)
+        
+        def remove_admin(self, telegram_id: int) -> bool:
+            user = db.get_user_by_telegram_id(telegram_id)
+            if user and user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+                if user.role == UserRole.SUPER_ADMIN:
+                    return False  # Cannot remove super admin
+                db.update_user_role(telegram_id, UserRole.USER)
+                return True
+            return False
+        
+        def get_admins(self):
+            admins = db.get_all_admins()
+            result = []
+            for user in admins:
+                role_emoji = "👑" if user.is_super_admin() else "🔑"
+                display = f"{user.telegram_id} {role_emoji}"
+                if user.username:
+                    display += f" @{user.username}"
+                if user.minecraft_nickname:
+                    display += f" (MC: {user.minecraft_nickname})"
+                result.append(display)
+            return result
+        
+        def set_minecraft_nickname(self, telegram_id: int, nickname: str) -> bool:
+            return db.update_user_minecraft_nickname(telegram_id, nickname)
+        
+        def is_super_admin(self, telegram_id: int) -> bool:
+            return db.is_super_admin(telegram_id)
+        
+        def promote_super_admin(self, telegram_id: int) -> bool:
+            user = db.get_user_by_telegram_id(telegram_id)
+            if not user:
+                # Create user if doesn't exist
+                user = db.get_or_create_user(telegram_id, auto_promote_ids=[])
+            return db.update_user_role(telegram_id, UserRole.SUPER_ADMIN)
+    
+    admin_manager = DatabaseAdminManager()
+    
     settings_manager = SettingsManager(
         toggle_auto_shutdown,
         lambda: idle_monitoring_enabled,
@@ -680,6 +736,12 @@ def main():
     
     def balance_keyboard_builder():
         return get_popup_balance_keyboard()
+    
+    # Wrapper for is_admin that also registers users
+    def is_admin_with_registration(user_id: int, user_obj=None) -> bool:
+        if user_obj:
+            register_or_update_user(user_obj)
+        return is_admin(user_id)
 
     # ✅ Регистрируем команды через модули
     register_info_handlers(
@@ -687,7 +749,8 @@ def main():
         facade,
         is_admin,
         keyboard_builder,
-        lambda: idle_monitoring_enabled
+        lambda: idle_monitoring_enabled,
+        register_or_update_user
     )
     
     register_server_handlers(
@@ -695,7 +758,8 @@ def main():
         facade,
         is_admin,
         keyboard_builder,
-        operation_manager
+        operation_manager,
+        register_or_update_user
     )
     
     register_admin_handlers(
@@ -703,7 +767,8 @@ def main():
         facade,
         is_admin,
         keyboard_builder,
-        admin_manager
+        admin_manager,
+        register_or_update_user
     )
     
     register_settings_handlers(
@@ -712,7 +777,8 @@ def main():
         is_admin,
         keyboard_builder,
         settings_manager,
-        IDLE_SHUTDOWN_TIMEOUT
+        IDLE_SHUTDOWN_TIMEOUT,
+        register_or_update_user
     )
     
     register_balance_handlers(
@@ -720,7 +786,8 @@ def main():
         facade,
         is_admin,
         keyboard_builder,
-        balance_keyboard_builder
+        balance_keyboard_builder,
+        register_or_update_user
     )
 
     # Регистрируем обработчик кнопок

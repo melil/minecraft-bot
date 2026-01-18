@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class SettingsCommands(CommandBase):
     """Команды настроек"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, settings_manager, idle_timeout):
-        super().__init__(facade, admin_checker, keyboard_builder)
+    def __init__(self, facade, admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None):
+        super().__init__(facade, admin_checker, keyboard_builder, user_registrar)
         self.settings_manager = settings_manager
         self.idle_timeout = idle_timeout
     
@@ -22,6 +22,9 @@ class SettingsCommands(CommandBase):
         """Обработчик команды /settings"""
         user = update.effective_user
         chat = update.effective_chat
+        
+        # Register user
+        self._register_user_if_needed(user)
 
         if chat.type != "private":
             await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
@@ -47,9 +50,9 @@ class SettingsCommands(CommandBase):
         )
 
 
-def register_settings_handlers(app: Application, facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout):
+def register_settings_handlers(app: Application, facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar=None):
     """Регистрирует команды настроек"""
-    commands = SettingsCommands(facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout)
+    commands = SettingsCommands(facade, is_admin_checker, keyboard_builder, settings_manager, idle_timeout, user_registrar)
     
     app.add_handler(CommandHandler("settings", commands.settings_command))
     
