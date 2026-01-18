@@ -89,6 +89,20 @@ cd mcrcon && make && cp mcrcon /usr/local/bin/
 python bot.py
 ```
 
+### 6. Миграция базы данных (если обновляетесь)
+
+Если вы обновляете бот и добавляете функционал статистики:
+
+```bash
+# Проверить статус миграции
+python migrate_player_stats.py --check
+
+# Применить миграцию
+python migrate_player_stats.py
+```
+
+Подробнее см. [MIGRATION_PLAYER_STATS.md](MIGRATION_PLAYER_STATS.md)
+
 ---
 
 ## 🎮 Команды бота
@@ -115,6 +129,23 @@ python bot.py
 /mc Сервер будет перезагружен через 5 минут
 /rcon time set day
 /rcon weather clear
+```
+
+### Статистика игроков
+| Команда | Описание |
+|---------|----------|
+| `/stats` | Показать свою статистику (требуется привязка ника) |
+| `/stats <ник>` | Показать статистику указанного игрока |
+| `/top_playtime` | Топ-10 игроков по времени игры |
+| `/top <N>` | Топ-N игроков (максимум 25) |
+| `/stats_all` | Общая статистика сервера (только админы) |
+
+**Примеры:**
+```
+/stats
+/stats PlayerName
+/top_playtime
+/top 15
 ```
 
 ### Админские команды
@@ -163,6 +194,7 @@ NOTIFICATION_GROUP_ID = -1234567890 # ID группы
 - **[MINECRAFT_CHAT.md](MINECRAFT_CHAT.md)** - Подробная документация по общению Telegram ↔ Minecraft
 - **[QUICKSTART_CHAT.md](QUICKSTART_CHAT.md)** - Быстрый старт для функционала общения
 - **[DATABASE_UPGRADE.md](DATABASE_UPGRADE.md)** - Обновление базы данных
+- **[MIGRATION_PLAYER_STATS.md](MIGRATION_PLAYER_STATS.md)** - Миграция для статистики игроков
 - **[GROUP_SUPPORT.md](GROUP_SUPPORT.md)** - Поддержка групп
 - **[MIGRATION.md](MIGRATION.md)** - Миграция на новую версию
 
@@ -219,9 +251,12 @@ minecraft-bot/
 - [x] Мониторинг событий из Minecraft (вход/выход, чат, смерти, достижения)
 - [x] Уведомления в группу о событиях
 - [x] Inline клавиатуры для управления
+- [x] Статистика активности игроков (время игры, смерти, убийства мобов)
+- [x] Топ игроков по времени игры
 
 ### 🔮 Планируется
-- [ ] Статистика активности игроков
+- [ ] Графики и тренды активности
+- [ ] Расширенная статистика (добытые блоки, пройденное расстояние)
 - [ ] Backup системы миров
 - [ ] Расписание запуска/остановки
 - [ ] Веб-панель управления
@@ -302,8 +337,8 @@ Pull requests приветствуются! Для крупных изменен
 
 ## 📞 Контакты
 
-- Telegram: [@yourusername](https://t.me/yourusername)
-- GitHub: [yourusername](https://github.com/yourusername)
+- Telegram: [@melil](https://t.me/melil)
+- GitHub: [melil](https://github.com/melil)
 
 ---
 

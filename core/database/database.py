@@ -1,9 +1,10 @@
 """Database management"""
 import logging
 from typing import Optional, List
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from .models import Base, User, UserRole, Group
+from .models import Base, User, UserRole, Group, PlayerStats
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +255,172 @@ class Database:
             return session.query(Group).all()
         finally:
             session.close()
+
+    # ==================== PLAYER STATS METHODS ====================
+
+    def get_or_create_player_stats(
+        self,
+        minecraft_uuid: str,
+        minecraft_nickname: Optional[str] = None
+    ) -> PlayerStats:
+        """Get or create player stats by Minecraft UUID"""
+        session = self.get_session()
+        try:
+            player = session.query(PlayerStats).filter(
+                PlayerStats.minecraft_uuid == minecraft_uuid
+            ).first()
+
+            if player:
+                # Update nickname if provided and different
+                if minecraft_nickname and player.minecraft_nickname != minecraft_nickname:
+                    player.minecraft_nickname = minecraft_nickname
+                    session.commit()
+                    session.refresh(player)
+                    logger.info(f"📝 Updated nickname for {minecraft_uuid}: {minecraft_nickname}")
+                return player
+
+            # Create new player stats
+            player = PlayerStats(
+                minecraft_uuid=minecraft_uuid,
+                minecraft_nickname=minecraft_nickname,
+                first_seen=datetime.utcnow()
+            )
+            session.add(player)
+            session.commit()
+            session.refresh(player)
+            logger.info(f"✅ Created player stats for {minecraft_uuid} ({minecraft_nickname})")
+            return player
+
+        finally:
+            session.close()
+
+    def update_player_stats(
+        self,
+        minecraft_uuid: str,
+        playtime_ticks: Optional[int] = None,
+        deaths: Optional[int] = None,
+        mob_kills: Optional[int] = None,
+        jumps: Optional[int] = None,
+        minecraft_nickname: Optional[str] = None,
+        last_seen: Optional[datetime] = None
+    ) -> bool:
+        """Update player statistics"""
+        session = self.get_session()
+        try:
+            player = session.query(PlayerStats).filter(
+                PlayerStats.minecraft_uuid == minecraft_uuid
+            ).first()
+
+            if not player:
+                # Create if doesn't exist
+                player = PlayerStats(
+                    minecraft_uuid=minecraft_uuid,
+                    minecraft_nickname=minecraft_nickname,
+                    first_seen=datetime.utcnow()
+                )
+                session.add(player)
+
+            # Update fields
+            if playtime_ticks is not None:
+                player.playtime_ticks = playtime_ticks
+            if deaths is not None:
+                player.deaths = deaths
+            if mob_kills is not None:
+                player.mob_kills = mob_kills
+            if jumps is not None:
+                player.jumps = jumps
+            if minecraft_nickname is not None:
+                player.minecraft_nickname = minecraft_nickname
+            if last_seen is not None:
+                player.last_seen = last_seen
+
+            player.last_updated = datetime.utcnow()
+
+            session.commit()
+            logger.info(f"✅ Updated stats for {minecraft_uuid}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error updating player stats: {e}")
+            session.rollback()
+            return False
+        finally:
+            session.close()
+
+    def get_player_stats_by_uuid(self, minecraft_uuid: str) -> Optional[PlayerStats]:
+        """Get player stats by Minecraft UUID"""
+        session = self.get_session()
+        try:
+            return session.query(PlayerStats).filter(
+                PlayerStats.minecraft_uuid == minecraft_uuid
+            ).first()
+        finally:
+            session.close()
+
+    def get_player_stats_by_nickname(self, minecraft_nickname: str) -> Optional[PlayerStats]:
+        """Get player stats by Minecraft nickname (case-insensitive)"""
+        session = self.get_session()
+        try:
+            return session.query(PlayerStats).filter(
+                PlayerStats.minecraft_nickname.ilike(minecraft_nickname)
+            ).first()
+        finally:
+            session.close()
+
+    def get_all_player_stats(self, limit: Optional[int] = None) -> List[PlayerStats]:
+        """Get all player stats"""
+        session = self.get_session()
+        try:
+            query = session.query(PlayerStats)
+            if limit:
+                query = query.limit(limit)
+            return query.all()
+        finally:
+            session.close()
+
+    def get_top_players_by_playtime(self, limit: int = 10) -> List[PlayerStats]:
+        """Get top players by playtime"""
+        session = self.get_session()
+        try:
+            return session.query(PlayerStats).order_by(
+                PlayerStats.playtime_ticks.desc()
+            ).limit(limit).all()
+        finally:
+            session.close()
+
+    def is_player_stats_cached(self, minecraft_uuid: str, cache_minutes: int = 5) -> bool:
+        """Check if player stats are cached (updated recently)"""
+        player = self.get_player_stats_by_uuid(minecraft_uuid)
+        if not player:
+            return False
+
+        time_since_update = datetime.utcnow() - player.last_updated
+        return time_since_update < timedelta(minutes=cache_minutes)
+
+    def get_cached_player_stats(
+        self,
+        minecraft_uuid: str,
+        cache_minutes: int = 5
+    ) -> Optional[PlayerStats]:
+        """Get cached player stats if fresh enough"""
+        if self.is_player_stats_cached(minecraft_uuid, cache_minutes):
+            return self.get_player_stats_by_uuid(minecraft_uuid)
+        return None
+
+    def get_cached_player_stats_by_nickname(
+        self,
+        minecraft_nickname: str,
+        cache_minutes: int = 5
+    ) -> Optional[PlayerStats]:
+        """Get cached player stats by nickname if fresh enough"""
+        player = self.get_player_stats_by_nickname(minecraft_nickname)
+        if not player:
+            return None
+        
+        time_since_update = datetime.utcnow() - player.last_updated
+        if time_since_update < timedelta(minutes=cache_minutes):
+            return player
+        return None
 
 
 # Global database instance

@@ -21,6 +21,9 @@ async def get_dynamic_keyboard(
         [
             InlineKeyboardButton("📊 Статус", callback_data="status"),
             InlineKeyboardButton("💵 Пополнить", callback_data="popup_balance")
+        ],
+        [
+            InlineKeyboardButton("📈 Статистика", callback_data="stats_menu")
         ]
     ]
     
@@ -110,4 +113,62 @@ def get_popup_balance_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
     ]
 
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_stats_menu_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура меню статистики"""
+    keyboard = [
+        [InlineKeyboardButton("👥 Выбрать игрока", callback_data="stats_select_player")],
+        [InlineKeyboardButton("🏆 Топ игроков", callback_data="stats_top")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
+    ]
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_players_list_keyboard(players: list, page: int = 0, page_size: int = 10) -> InlineKeyboardMarkup:
+    """
+    Клавиатура со списком игроков для выбора
+    
+    Args:
+        players: список словарей с данными игроков [{nickname: str, uuid: str}, ...]
+        page: номер страницы (0-based)
+        page_size: количество игроков на странице
+    """
+    start_idx = page * page_size
+    end_idx = start_idx + page_size
+    page_players = players[start_idx:end_idx]
+    
+    keyboard = []
+    
+    # Создаем кнопки по 2 в ряд
+    for i in range(0, len(page_players), 2):
+        row = []
+        for j in range(2):
+            idx = i + j
+            if idx < len(page_players):
+                player = page_players[idx]
+                row.append(InlineKeyboardButton(
+                    player['nickname'],
+                    callback_data=f"stats_player:{player['uuid'][:8]}"
+                ))
+        keyboard.append(row)
+    
+    # Навигация по страницам
+    nav_buttons = []
+    total_pages = (len(players) + page_size - 1) // page_size
+    
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("◀️ Пред.", callback_data=f"stats_page:{page-1}"))
+    
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("След. ▶️", callback_data=f"stats_page:{page+1}"))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    
+    # Кнопка назад
+    keyboard.append([InlineKeyboardButton("◀️ Назад к меню", callback_data="stats_menu")])
+    
     return InlineKeyboardMarkup(keyboard)

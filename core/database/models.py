@@ -1,7 +1,7 @@
 """Database models for user management"""
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum, BigInteger, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum, BigInteger, Boolean, Float
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -83,3 +83,26 @@ class Group(Base):
         if self.username:
             return f"@{self.username}"
         return f"Group {self.telegram_id}"
+
+
+class PlayerStats(Base):
+    """Player statistics from Minecraft"""
+    __tablename__ = 'player_stats'
+
+    id = Column(Integer, primary_key=True)
+    minecraft_uuid = Column(String(36), unique=True, nullable=False, index=True)
+    minecraft_nickname = Column(String(16), nullable=True, index=True)
+    playtime_ticks = Column(BigInteger, default=0)  # В тиках (20 тиков = 1 секунда)
+    deaths = Column(Integer, default=0)
+    mob_kills = Column(Integer, default=0)
+    jumps = Column(Integer, default=0)
+    last_updated = Column(DateTime, nullable=False, default=datetime.utcnow)
+    first_seen = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_seen = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<PlayerStats(uuid={self.minecraft_uuid}, nickname={self.minecraft_nickname}, playtime={self.playtime_ticks})>"
+
+    def get_playtime_hours(self) -> float:
+        """Get playtime in hours"""
+        return self.playtime_ticks / (20 * 60 * 60)  # 20 ticks/sec * 60 sec/min * 60 min/hour

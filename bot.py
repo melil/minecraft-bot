@@ -29,6 +29,7 @@ from core.bot.commands import (
     register_chat_handlers,
     register_map_handlers
 )
+from core.bot.commands.stats import register_stats_handlers
 from core.bot.commands.managers import OperationManager, AdminManager, SettingsManager
 from core.bot.keyboards import get_dynamic_keyboard, get_settings_keyboard, get_popup_balance_keyboard
 
@@ -823,6 +824,256 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_web_page_preview=True
         )
 
+    # ========== МЕНЮ СТАТИСТИКИ ==========
+    elif data == "stats_menu":
+        from core.bot.keyboards import get_stats_menu_keyboard
+        
+        message_text = (
+            "📈 <b>Статистика игроков</b>\n\n"
+            "Выберите действие:"
+        )
+        
+        await query.edit_message_text(
+            message_text,
+            reply_markup=get_stats_menu_keyboard(),
+            parse_mode="HTML"
+        )
+
+    # ========== ВЫБОР ИГРОКА ==========
+    elif data == "stats_select_player":
+        from core.minecraft.stats import get_all_players_list, get_usercache
+        from core.bot.keyboards import get_players_list_keyboard
+        
+        await query.answer("⏳ Загружаю список игроков...")
+        
+        try:
+            # Загружаем список игроков
+            uuids = await get_all_players_list(MINECRAFT_SERVER_SSH)
+            usercache = await get_usercache(MINECRAFT_SERVER_SSH)
+            
+            if not uuids:
+                await query.edit_message_text(
+                    "❌ На сервере еще не было игроков",
+                    reply_markup=get_stats_menu_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+            
+            # Создаем список игроков с никнеймами
+            from core.minecraft.stats import uuid_to_username
+            players = []
+            for uuid in uuids:
+                nickname = await uuid_to_username(MINECRAFT_SERVER_SSH, uuid, usercache)
+                players.append({'nickname': nickname, 'uuid': uuid})
+            
+            # Сортируем по никнейму
+            players.sort(key=lambda p: p['nickname'].lower())
+            
+            # Сохраняем список в контексте для пагинации
+            context.bot_data[f'players_list_{chat.id}'] = players
+            
+            await query.edit_message_text(
+                f"👥 <b>Выберите игрока ({len(players)})</b>",
+                reply_markup=get_players_list_keyboard(players, page=0),
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки списка игроков: {e}", exc_info=True)
+            await query.edit_message_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=get_stats_menu_keyboard(),
+                parse_mode="HTML"
+            )
+
+    # ========== ПАГИНАЦИЯ СПИСКА ИГРОКОВ ==========
+    elif data.startswith("stats_page:"):
+        from core.bot.keyboards import get_players_list_keyboard
+        
+        page = int(data.split(":")[1])
+        players = context.bot_data.get(f'players_list_{chat.id}', [])
+        
+        if not players:
+            await query.answer("❌ Список игроков устарел, загрузите заново", show_alert=True)
+            return
+        
+        await query.edit_message_text(
+            f"👥 <b>Выберите игрока ({len(players)})</b>",
+            reply_markup=get_players_list_keyboard(players, page=page),
+            parse_mode="HTML"
+        )
+
+    # ========== ПРОСМОТР СТАТИСТИКИ ИГРОКА ==========
+    elif data.startswith("stats_player:"):
+        from core.minecraft.stats import get_player_stats, find_player_by_nickname
+        from core.bot.keyboards import get_stats_menu_keyboard
+        
+        await query.answer("⏳ Загружаю статистику...")
+        
+        try:
+            uuid_short = data.split(":")[1]
+            
+            # Находим полный UUID из сохраненного списка
+            players = context.bot_data.get(f'players_list_{chat.id}', [])
+            player_uuid = None
+            player_nickname = None
+            
+            for p in players:
+                if p['uuid'].startswith(uuid_short):
+                    player_uuid = p['uuid']
+                    player_nickname = p['nickname']
+                    break
+            
+            if not player_uuid:
+                await query.answer("❌ Игрок не найден", show_alert=True)
+                return
+            
+            # Проверяем кэш
+            cached = db.get_cached_player_stats(player_uuid, cache_minutes=5)
+            
+            if cached:
+                stats = {
+                    'nickname': cached.minecraft_nickname,
+                    'playtime_ticks': cached.playtime_ticks,
+                    'deaths': cached.deaths,
+                    'mob_kills': cached.mob_kills,
+                    'jumps': cached.jumps,
+                }
+                from core.minecraft.stats import format_playtime, ticks_to_timedelta
+                stats['playtime_formatted'] = format_playtime(ticks_to_timedelta(cached.playtime_ticks))
+            else:
+                # Загружаем с сервера
+                stats = await get_player_stats(MINECRAFT_SERVER_SSH, player_uuid, player_nickname)
+                
+                if not stats:
+                    await query.edit_message_text(
+                        f"❌ Не удалось загрузить статистику",
+                        reply_markup=get_stats_menu_keyboard(),
+                        parse_mode="HTML"
+                    )
+                    return
+                
+                # Сохраняем в кэш
+                from datetime import datetime
+                db.update_player_stats(
+                    minecraft_uuid=player_uuid,
+                    minecraft_nickname=stats['nickname'],
+                    playtime_ticks=stats['playtime_ticks'],
+                    deaths=stats.get('deaths', 0),
+                    mob_kills=stats.get('mob_kills', 0),
+                    jumps=stats.get('jumps', 0),
+                    last_seen=datetime.utcnow()
+                )
+            
+            # Формируем сообщение
+            message = (
+                f"📊 <b>Статистика игрока {stats['nickname']}</b>\n\n"
+                f"⏱️ <b>Время в игре:</b> {stats['playtime_formatted']}\n"
+                f"💀 <b>Смертей:</b> {stats.get('deaths', 0)}\n"
+                f"⚔️ <b>Убито мобов:</b> {stats.get('mob_kills', 0)}\n"
+                f"🦘 <b>Прыжков:</b> {stats.get('jumps', 0)}\n"
+            )
+            
+            await query.edit_message_text(
+                message,
+                reply_markup=get_stats_menu_keyboard(),
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки статистики: {e}", exc_info=True)
+            await query.edit_message_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=get_stats_menu_keyboard(),
+                parse_mode="HTML"
+            )
+
+    # ========== ТОП ИГРОКОВ ==========
+    elif data == "stats_top":
+        from core.minecraft.stats import get_top_players_by_playtime, format_playtime, ticks_to_timedelta
+        from core.bot.keyboards import get_stats_menu_keyboard
+        
+        await query.answer("⏳ Загружаю топ игроков...")
+        
+        try:
+            # Проверяем кэш
+            cached_players = db.get_top_players_by_playtime(limit=10)
+            
+            use_cache = False
+            if cached_players:
+                from datetime import datetime
+                latest_update = max(p.last_updated for p in cached_players)
+                cache_age = (datetime.utcnow() - latest_update).total_seconds() / 60
+                
+                if cache_age < 10:
+                    use_cache = True
+            
+            if use_cache:
+                top_players = [
+                    {
+                        'nickname': p.minecraft_nickname or 'Unknown',
+                        'playtime_ticks': p.playtime_ticks,
+                        'playtime_formatted': format_playtime(ticks_to_timedelta(p.playtime_ticks))
+                    }
+                    for p in cached_players
+                ]
+            else:
+                # Загружаем с сервера
+                top_players = await get_top_players_by_playtime(MINECRAFT_SERVER_SSH, limit=10)
+                
+                if not top_players:
+                    await query.edit_message_text(
+                        "❌ Не удалось загрузить топ игроков",
+                        reply_markup=get_stats_menu_keyboard(),
+                        parse_mode="HTML"
+                    )
+                    return
+                
+                # Обновляем кэш
+                for player in top_players:
+                    db.update_player_stats(
+                        minecraft_uuid=player['uuid'],
+                        minecraft_nickname=player['nickname'],
+                        playtime_ticks=player['playtime_ticks'],
+                        deaths=player.get('deaths', 0),
+                        mob_kills=player.get('mob_kills', 0),
+                        jumps=player.get('jumps', 0)
+                    )
+            
+            # Формируем сообщение
+            if not top_players:
+                await query.edit_message_text(
+                    "❌ На сервере еще не было игроков",
+                    reply_markup=get_stats_menu_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+            
+            message_lines = [f"🏆 <b>Топ {len(top_players)} игроков по времени игры</b>\n"]
+            
+            medals = ["🥇", "🥈", "🥉"]
+            for i, player in enumerate(top_players, 1):
+                medal = medals[i-1] if i <= 3 else f"{i}."
+                nickname = player['nickname']
+                playtime = player['playtime_formatted']
+                
+                message_lines.append(f"{medal} <b>{nickname}</b> — {playtime}")
+            
+            message = "\n".join(message_lines)
+            await query.edit_message_text(
+                message,
+                reply_markup=get_stats_menu_keyboard(),
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки топа: {e}", exc_info=True)
+            await query.edit_message_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=get_stats_menu_keyboard(),
+                parse_mode="HTML"
+            )
+
     # ========== ОПЕРАЦИИ С СЕРВЕРОМ ==========
     elif data in ["start_server", "stop_server", "restart_server"]:
         if not show_admin:
@@ -1061,6 +1312,16 @@ def main():
     register_map_handlers(
         application,
         bluemap_api,
+        register_or_update_user,
+        register_or_update_group
+    )
+    
+    # Регистрируем обработчики команд статистики
+    register_stats_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
         register_or_update_user,
         register_or_update_group
     )
