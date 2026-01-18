@@ -251,7 +251,6 @@ class MinecraftLogMonitor:
         self.is_running = False
         self.task = None
         self.parser = MinecraftLogParser()
-        self.last_log_line = None  # Для отслеживания последней обработанной строки
     
     async def start(self):
         """Запускает мониторинг логов"""
@@ -301,9 +300,9 @@ class MinecraftLogMonitor:
         try:
             client = SSHClient(**self.ssh_config)
             
-            # Получаем последние 50 строк логов
+            # Получаем последние 50 строк логов за последние 10 секунд
             # Используем --output=cat чтобы получить полные строки без обрезания
-            command = f"journalctl -u minecraft.service --since '{self.check_interval + 5} seconds ago' --no-pager --output=cat -n 50 2>/dev/null || echo ''"
+            command = f"journalctl -u minecraft.service --since '10 seconds ago' --no-pager --output=cat -n 50 2>/dev/null || echo ''"
             logger.debug(f"📜 Выполнение: {command}")
             
             result = await client.execute(command, timeout=10)
@@ -315,21 +314,21 @@ class MinecraftLogMonitor:
                 return
             
             lines = result.strip().split('\n')
-            logger.debug(f"📄 Обработка {len(lines)} строк логов")
             
-            # Обрабатываем каждую строку
+            # Убираем дубликаты, сохраняя порядок
+            seen_lines = set()
+            unique_lines = []
+            for line in lines:
+                if line.strip() and line not in seen_lines:
+                    seen_lines.add(line)
+                    unique_lines.append(line)
+            
+            logger.debug(f"📄 Обработка {len(unique_lines)} уникальных строк (было {len(lines)})")
+            
+            # Обрабатываем каждую уникальную строку
             new_events = 0
-            for i, line in enumerate(lines):
-                # Пропускаем пустые строки
-                if not line.strip():
-                    continue
-                
+            for i, line in enumerate(unique_lines):
                 logger.debug(f"📃 Строка {i+1}: {line[:150]}")  # Первые 150 символов
-                
-                # Пропускаем уже обработанные строки
-                if self.last_log_line and line == self.last_log_line:
-                    logger.debug(f"⏭️ Строка уже обработана, пропуск")
-                    continue
                 
                 # Парсим событие
                 event = self.parser.parse_line(line)
@@ -346,10 +345,6 @@ class MinecraftLogMonitor:
             
             if new_events > 0:
                 logger.info(f"📊 Обработано новых событий: {new_events}")
-            
-            # Сохраняем последнюю строку
-            if lines:
-                self.last_log_line = lines[-1]
         
         except Exception as e:
             logger.error(f"❌ Ошибка проверки логов: {e}", exc_info=True)
