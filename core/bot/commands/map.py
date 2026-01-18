@@ -148,9 +148,81 @@ def register_map_handlers(
         )
         logger.info(f"📍 {user.username or user.id} запросил список игроков на карте")
     
+    async def map_size_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Показывает размер карты на диске
+        Использование: /map_size
+        """
+        user = update.effective_user
+        chat = update.effective_chat
+        
+        # Register user and group
+        register_user_func(user)
+        if chat.type in ["group", "supergroup"]:
+            register_group_func(chat)
+        
+        # Отправляем сообщение о загрузке
+        status_msg = await update.message.reply_text("⏳ Проверяю размер карты...")
+        
+        # Получаем размер карты
+        stats = await bluemap_api.get_map_size()
+        
+        if 'error' in stats:
+            await status_msg.edit_text(
+                "❌ Не удалось получить размер карты.\n\n"
+                f"Ошибка: {stats['error']}"
+            )
+            return
+        
+        size_mb = stats['size_mb']
+        size_human = stats['size_human']
+        file_count = stats['file_count']
+        
+        # Определяем статус по размеру
+        if size_mb < 1000:
+            status_emoji = "🟢"
+            status_text = "Отлично"
+        elif size_mb < 5000:
+            status_emoji = "🟡"
+            status_text = "Нормально"
+        elif size_mb < 10000:
+            status_emoji = "🟠"
+            status_text = "Много"
+        else:
+            status_emoji = "🔴"
+            status_text = "Очень много"
+        
+        # Форматируем сообщение
+        text = (
+            f"🗺️ <b>Статистика карты BlueMap</b>\n\n"
+            f"💾 <b>Размер:</b> {size_human} ({size_mb} MB)\n"
+            f"📊 <b>Статус:</b> {status_emoji} {status_text}\n"
+            f"🗂️ <b>Тайлов:</b> {file_count:,}\n"
+            f"📁 <b>Путь:</b> <code>{stats['path']}</code>\n\n"
+        )
+        
+        # Добавляем рекомендации
+        if size_mb > 5000:
+            text += (
+                "💡 <b>Рекомендации:</b>\n"
+                "• Рассмотрите очистку старых тайлов\n"
+                "• Увеличьте сжатие в конфиге\n"
+                "• Ограничьте область рендера\n\n"
+            )
+        
+        text += f"🗺️ <a href='{bluemap_api.get_map_url()}'>Открыть карту</a>"
+        
+        await status_msg.edit_text(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+        logger.info(f"📍 {user.username or user.id} проверил размер карты: {size_human}")
+    
     # Регистрируем обработчики
     application.add_handler(CommandHandler("map", map_command))
     application.add_handler(CommandHandler("where", where_command))
     application.add_handler(CommandHandler("players_map", players_map_command))
+    application.add_handler(CommandHandler("map_size", map_size_command))
     
     logger.info("✅ Map handlers registered")

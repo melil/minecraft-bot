@@ -1056,7 +1056,7 @@ def main():
     
     # Регистрируем обработчики команд карты
     from core.bluemap import BlueMapAPI
-    bluemap_api = BlueMapAPI(BLUEMAP_URL)
+    bluemap_api = BlueMapAPI(BLUEMAP_URL, MINECRAFT_SERVER_SSH)
     
     register_map_handlers(
         application,

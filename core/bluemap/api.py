@@ -11,8 +11,13 @@ logger = logging.getLogger(__name__)
 class BlueMapAPI:
     """Client for BlueMap web API"""
     
-    def __init__(self, base_url: str = "http://95.163.227.185:8100"):
+    def __init__(self, base_url: str = "http://95.163.227.185:8100", ssh_config: dict = None):
         self.base_url = base_url.rstrip('/')
+        self.ssh_config = ssh_config or {
+            'host': '95.163.227.185',
+            'user': 'root',
+            'port': 22
+        }
         
     async def get_players(self) -> List[Dict[str, Any]]:
         """
