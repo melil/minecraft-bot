@@ -27,7 +27,8 @@ from core.bot.commands import (
     register_settings_handlers,
     register_balance_handlers,
     register_chat_handlers,
-    register_map_handlers
+    register_map_handlers,
+    register_joke_handlers
 )
 from core.bot.commands.stats import register_stats_handlers
 from core.bot.commands.managers import OperationManager, AdminManager, SettingsManager
@@ -1171,6 +1172,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Ошибка детальной статистики: {e}", exc_info=True)
             await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
+    # ========== АНЕКДОТ ДЛЯ ВОВЫ ==========
+    elif data == "get_joke":
+        # Импортируем обработчик анекдотов
+        from core.bot.commands.jokes import JokeCommands
+        
+        # Создаем экземпляр команд анекдотов
+        joke_commands = JokeCommands(facade, is_admin, 
+                                      lambda show_admin: get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
+                                      register_or_update_user, register_or_update_group)
+        
+        # Вызываем обработчик
+        await joke_commands.handle_joke_callback(update, context)
+
     # ========== ОПЕРАЦИИ С СЕРВЕРОМ ==========
     elif data in ["start_server", "stop_server", "restart_server"]:
         if not show_admin:
@@ -1415,6 +1429,16 @@ def main():
     
     # Регистрируем обработчики команд статистики
     register_stats_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        register_or_update_user,
+        register_or_update_group
+    )
+    
+    # Регистрируем обработчики команд анекдотов
+    register_joke_handlers(
         application,
         facade,
         is_admin,

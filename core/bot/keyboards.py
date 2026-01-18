@@ -24,6 +24,9 @@ async def get_dynamic_keyboard(
         ],
         [
             InlineKeyboardButton("📈 Статистика", callback_data="stats_menu")
+        ],
+        [
+            InlineKeyboardButton("😂 Анекдот для Вовы", callback_data="get_joke")
         ]
     ]
     
