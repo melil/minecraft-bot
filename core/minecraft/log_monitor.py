@@ -111,6 +111,13 @@ class MinecraftLogParser:
             r':\s*(\w+)\s+has\s+(made\s+the\s+advancement|completed\s+the\s+challenge|reached\s+the\s+goal)\s+\[(.+?)\]',
             re.IGNORECASE
         ),
+        
+        # [12:34:56] [Server thread/INFO]: [Not Secure] <Player> telegram: message text
+        # Важно: проверяем префикс telegram: в начале сообщения
+        'telegram_message': re.compile(
+            r':\s*(?:\[Not Secure\]\s*)?<(\w+)>\s*telegram:\s*(.+)$',
+            re.IGNORECASE
+        ),
     }
     
     @staticmethod
@@ -146,7 +153,21 @@ class MinecraftLogParser:
                     player_name=player_name
                 )
             
-            # 3. Сообщение в чате
+            # 3. Сообщения для Telegram (с префиксом "telegram:")
+            # ВАЖНО: проверяем ДО обычных chat-сообщений!
+            match = MinecraftLogParser.PATTERNS['telegram_message'].search(line)
+            if match:
+                player_name = match.group(1)
+                message = match.group(2).strip()
+                return TelegramMessageEvent(
+                    event_type='telegram_message',
+                    timestamp=timestamp,
+                    raw_message=line,
+                    player_name=player_name,
+                    message=message
+                )
+            
+            # 4. Сообщение в чате
             match = MinecraftLogParser.PATTERNS['chat'].search(line)
             if match:
                 player_name = match.group(1)
@@ -154,26 +175,6 @@ class MinecraftLogParser:
                 
                 # Игнорируем сообщения от бота (Telegram)
                 if '[Telegram' in message or message.startswith('[Telegram'):
-                    return None
-                
-                # Проверяем, начинается ли сообщение с "telegram:" или "telegram "
-                if message.lower().startswith('telegram:') or message.lower().startswith('telegram '):
-                    # Убираем префикс "telegram:" или "telegram "
-                    if message.lower().startswith('telegram:'):
-                        actual_message = message[9:].strip()  # len('telegram:') = 9
-                    else:
-                        actual_message = message[9:].strip()  # len('telegram ') = 9
-                    
-                    # Если после префикса есть текст, создаем TelegramMessageEvent
-                    if actual_message:
-                        return TelegramMessageEvent(
-                            event_type='telegram',
-                            timestamp=timestamp,
-                            raw_message=line,
-                            player_name=player_name,
-                            message=actual_message
-                        )
-                    # Если текста нет, игнорируем
                     return None
                 
                 # Обычное сообщение в чате
@@ -185,7 +186,7 @@ class MinecraftLogParser:
                     message=message
                 )
             
-            # 4. Достижения
+            # 5. Достижения
             match = MinecraftLogParser.PATTERNS['achievement'].search(line)
             if match:
                 player_name = match.group(1)
@@ -198,7 +199,7 @@ class MinecraftLogParser:
                     achievement=achievement
                 )
             
-            # 5. Смерть (должна быть последней, т.к. паттерн широкий)
+            # 6. Смерть (должна быть последней, т.к. паттерн широкий)
             match = MinecraftLogParser.PATTERNS['death'].search(line)
             if match:
                 # Извлекаем полное сообщение о смерти
