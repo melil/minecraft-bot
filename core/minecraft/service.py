@@ -14,19 +14,23 @@ MINECRAFT_DIR = "/root/freshcraft_industrial_server"
 
 async def is_ready(ssh_config: dict) -> bool:
     """
-    Проверяет, готов ли Minecraft сервер через systemd
+    Проверяет, готов ли Minecraft сервер через RCON порт
     """
     try:
         client = SSHClient(**ssh_config)
+        # Пытаемся выполнить RCON команду list
+        # Если команда успешна, значит сервер готов принимать команды
         result = await client.execute(
-            "systemctl is-active minecraft.service 2>/dev/null || echo 'inactive'",
+            f"mcrcon -H 127.0.0.1 -P 25575 -p '{MINECRAFT_RCON_PASSWORD}' list 2>&1",
             timeout=10
         )
-        is_active = result.strip() == "active"
-        logger.debug(f"Minecraft systemd status: {result.strip()}")
+        
+        # Проверяем, что получили корректный ответ от RCON
+        is_active = "There are" in result or "players online" in result
+        logger.debug(f"Minecraft RCON check: {'ready' if is_active else 'not ready'}")
         return is_active
     except Exception as e:
-        logger.error(f"Ошибка проверки статуса Minecraft: {e}")
+        logger.error(f"Ошибка проверки статуса Minecraft через RCON: {e}")
         return False
 
 
@@ -35,11 +39,8 @@ async def get_players_via_rcon(client: SSHClient) -> Tuple[Optional[int], Option
     Получает список игроков через RCON
     """
     try:
-        # Используем хардкод пароля (можно вынести в конфиг)
-        RCON_PASSWORD = "SuperPassword228"
-
         result = await client.execute(
-            f"mcrcon -H 127.0.0.1 -P 25575 -p '{RCON_PASSWORD}' list 2>&1",
+            f"mcrcon -H 127.0.0.1 -P 25575 -p '{MINECRAFT_RCON_PASSWORD}' list 2>&1",
             timeout=10
         )
 
