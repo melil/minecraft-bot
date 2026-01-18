@@ -22,16 +22,40 @@ jobs:
           script: |
             echo "🚀 Начинаем деплой..."
             cd /root/minecraft-bot
+            
+            echo "📊 Текущий статус репозитория:"
+            git status
+            
+            echo "🧹 Очищаем неотслеживаемые файлы (кроме .env)..."
+            git clean -fd -e .env -e .env.* -e *.env
+            
+            echo "🔄 Сброс локальных изменений..."
             git reset --hard HEAD
-            echo "📁 Забираем последние изменения"
-            git pull origin main
+            
+            echo "📁 Забираем последние изменения из main..."
+            git fetch origin main
+            git reset --hard origin/main
+            
+            echo "📦 Проверяем структуру файлов..."
+            ls -la
+            echo "📂 Проверяем core/bot/..."
+            ls -la core/bot/ || echo "⚠️ Папка core/bot не найдена"
+            echo "📂 Проверяем core/bot/commands/..."
+            ls -la core/bot/commands/ || echo "⚠️ Папка core/bot/commands не найдена"
+            
+            echo "🐍 Проверяем Python зависимости..."
+            /usr/bin/python3 -m pip install -q -r requirements.txt
             
             echo "🔄 Перезапускаем сервис..."
             if systemctl restart minecraft-bot.service; then
               echo "✅ Сервис успешно перезапущен"
+              sleep 3
               systemctl status minecraft-bot.service --no-pager
             else
               echo "❌ Ошибка при перезапуске сервиса"
-              echo "⚠️ Проверьте: sudo systemctl status minecraft-bot.service"
+              echo "📋 Логи сервиса:"
+              journalctl -u minecraft-bot.service -n 50 --no-pager
+              exit 1
             fi
-            echo "✅ Деплой завершен!!!"
+            
+            echo "✅ Деплой завершен успешно!"

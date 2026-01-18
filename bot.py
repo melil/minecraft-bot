@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
-    CommandHandler,
     CallbackQueryHandler,
     ContextTypes
 )
@@ -17,6 +16,17 @@ from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
 from core.api.regru import RegRuClient
+
+# Импортируем регистраторы команд
+from core.bot.commands import (
+    register_info_handlers,
+    register_server_handlers,
+    register_admin_handlers,
+    register_settings_handlers,
+    register_balance_handlers
+)
+from core.bot.commands.managers import OperationManager, AdminManager, SettingsManager
+from core.bot.keyboards import get_dynamic_keyboard, get_settings_keyboard, get_popup_balance_keyboard
 
 reg_ru_api = RegRuClient(REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID)
 facade = ServerFacade(reg_ru_api)
@@ -339,7 +349,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text="⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-                reply_markup=await get_dynamic_keyboard(show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
                 parse_mode="HTML"
             )
             cancel_operation(chat_id)
@@ -368,7 +378,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=f"{state_emoji} {progress}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
-                reply_markup=await get_dynamic_keyboard(show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
                 parse_mode="HTML",
                 disable_web_page_preview=True
             )
@@ -388,7 +398,7 @@ async def perform_server_operation(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=f"{success_message}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
-                    reply_markup=await get_dynamic_keyboard(show_admin),
+                    reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
@@ -411,7 +421,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text="❌ Операция отменена",
-                reply_markup=await get_dynamic_keyboard(show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
                 parse_mode="HTML"
             )
         except:
@@ -424,7 +434,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=f"❌ Ошибка: {e}",
-                reply_markup=await get_dynamic_keyboard(show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
                 parse_mode="HTML"
             )
         except:
@@ -432,388 +442,12 @@ async def perform_server_operation(
 
 
 # ==================== КЛАВИАТУРЫ ====================
-
-async def get_dynamic_keyboard(show_admin_buttons: bool = False) -> InlineKeyboardMarkup:
-    """Создает динамическую клавиатуру в зависимости от состояния сервера"""
-    keyboard = [
-        [
-            InlineKeyboardButton("📊 Статус", callback_data="status"),
-            InlineKeyboardButton("💵 Пополнить", callback_data="popup_balance")
-        ]
-    ]
-
-    if show_admin_buttons:
-        try:
-            # Получаем текущий статус сервера
-            status: ServerStatus = await facade.status()
-
-            # В зависимости от состояния показываем разные кнопки
-            if status.state == ServerState.OFF:
-                # Сервер выключен — только кнопка запуска
-                keyboard.append([
-                    InlineKeyboardButton("▶️ Запустить", callback_data="start_server")
-                ])
-
-            elif status.state in [ServerState.STARTING, ServerState.BOOTING]:
-                # Сервер запускается — показываем состояние
-                keyboard.append([
-                    InlineKeyboardButton("⏳ Запускается...", callback_data="status")
-                ])
-
-            elif status.state == ServerState.READY:
-                # Сервер работает — кнопки остановки и перезагрузки
-                keyboard.append([
-                    InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server"),
-                    InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
-                ])
-
-            # Кнопка настроек всегда доступна
-            keyboard.append([
-                InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
-            ])
-
-        except Exception as e:
-            logger.error(f"Ошибка получения статуса для клавиатуры: {e}")
-            # Фолбэк на стандартные кнопки
-            keyboard.append([
-                InlineKeyboardButton("▶️ Запустить", callback_data="start_server"),
-                InlineKeyboardButton("⏹️ Остановить", callback_data="stop_server")
-            ])
-            keyboard.append([
-                InlineKeyboardButton("🔄 Перезагрузить", callback_data="restart_server")
-            ])
-            keyboard.append([
-                InlineKeyboardButton("⚙️ Настройки", callback_data="settings")
-            ])
-
-    return InlineKeyboardMarkup(keyboard)
-
-
-def get_settings_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура настроек"""
-    auto_status = "🟢 ВКЛ" if idle_monitoring_enabled else "🔴 ВЫКЛ"
-
-    keyboard = [
-        [InlineKeyboardButton(
-            f"⏱️ Автовыключение: {auto_status}",
-            callback_data="toggle_auto_shutdown"
-        )],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
-
-
-def get_popup_balance_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура пополнения баланса"""
-    keyboard = [
-        [InlineKeyboardButton(
-            f"🟨",
-            url="https://www.tbank.ru/cf/2dzkoyJFsJc"
-        ), InlineKeyboardButton(
-            f"🟩",
-            url="https://reg.cloud/prolong"
-        )],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
+# Клавиатуры вынесены в core/bot/keyboards.py
 
 
 # ==================== КОМАНДЫ БОТА ====================
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
-    user = update.effective_user
-    chat = update.effective_chat
-
-    if chat.type == "private":
-        show_admin = is_admin(user.id)
-        welcome_text = (
-            "👋 Привет! Я бот для управления Minecraft сервером.\n\n"
-            "📋 Доступные команды:\n"
-            "/status - статус сервера\n"
-            "/players - список игроков онлайн\n"
-        )
-        if show_admin:
-            welcome_text += (
-                "/start_server - запустить сервер\n"
-                "/stop_server - остановить сервер\n"
-                "/restart_server - перезагрузить сервер\n\n"
-                "👑 Команды для администраторов:\n"
-                "/add_admin <id> - добавить администратора\n"
-                "/list_admins - список администраторов\n"
-                "/del_admin <id> - удалить администратора\n"
-            )
-        welcome_text += "\n💡 Используйте кнопки ниже для быстрого управления:"
-        keyboard = await get_dynamic_keyboard(show_admin)
-        await update.message.reply_text(welcome_text, reply_markup=keyboard)
-    else:
-        keyboard = await get_dynamic_keyboard(False)
-        await update.message.reply_text(
-            "🤖 Бот Minecraft сервера активен.\n"
-            "Используйте /players для проверки игроков онлайн.",
-            reply_markup=keyboard
-        )
-
-
-async def players_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /players (доступна всем)"""
-    status_msg = await update.message.reply_text(
-        "⏳ Проверяю статус сервера...",
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
-
-    try:
-        status: ServerStatus = await facade.status()
-    except Exception as e:
-        await status_msg.edit_text(
-            f"❌ Ошибка при получении статуса: {e}",
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-        return
-
-    if status.state != ServerState.READY:
-        text = ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)
-        await status_msg.edit_text(
-            f"{text}\n🎮 Minecraft: не запущен",
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-        return
-
-    text = ServerStatus.format_players(status)
-    await status_msg.edit_text(text, parse_mode="HTML", disable_web_page_preview=True)
-
-
-async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start_server (только для админов в ЛС)"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # if chat.type != "private":
-    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-    #     return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    # Проверяем активные операции
-    if is_operation_active(chat.id):
-        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
-        return
-
-    logger.info(f"Пользователь {user.id} запустил команду /start_server")
-
-    keyboard = await get_dynamic_keyboard(True)
-    msg = await update.message.reply_text(
-        "▶️ Запускаю сервер в облаке...",
-        reply_markup=keyboard
-    )
-
-    # Создаем фоновую задачу
-    task = asyncio.create_task(
-        perform_server_operation("start", chat.id, msg.message_id, True)
-    )
-
-    active_operations[chat.id] = {
-        'task': task,
-        'operation_type': 'start',
-        'message_id': msg.message_id
-    }
-
-
-async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /stop_server (только для админов в ЛС)"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # if chat.type != "private":
-    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-    #     return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    # Проверяем активные операции
-    if is_operation_active(chat.id):
-        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
-        return
-
-    keyboard = await get_dynamic_keyboard(True)
-    msg = await update.message.reply_text(
-        "⏹️ Останавливаю сервер...",
-        reply_markup=keyboard
-    )
-
-    # Создаем фоновую задачу
-    task = asyncio.create_task(
-        perform_server_operation("stop", chat.id, msg.message_id, True)
-    )
-
-    active_operations[chat.id] = {
-        'task': task,
-        'operation_type': 'stop',
-        'message_id': msg.message_id
-    }
-
-
-async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /restart_server (только для админов в ЛС)"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # if chat.type != "private":
-    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-    #     return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    # Проверяем активные операции
-    if is_operation_active(chat.id):
-        await update.message.reply_text("⚠️ Уже выполняется другая операция. Дождитесь завершения.")
-        return
-
-    keyboard = await get_dynamic_keyboard(True)
-    msg = await update.message.reply_text(
-        "🔄 Перезагружаю сервер...",
-        reply_markup=keyboard
-    )
-
-    # Создаем фоновую задачу
-    task = asyncio.create_task(
-        perform_server_operation("restart", chat.id, msg.message_id, True)
-    )
-
-    active_operations[chat.id] = {
-        'task': task,
-        'operation_type': 'restart',
-        'message_id': msg.message_id
-    }
-
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    show_admin = is_admin(user.id) and update.effective_chat.type == "private"
-
-    keyboard = await get_dynamic_keyboard(show_admin)
-    msg = await update.message.reply_text("⏳ Проверяю статус...", reply_markup=keyboard)
-
-    result = await facade.status()
-    text = ServerStatus.format_server_status(result, monitoring_enabled=idle_monitoring_enabled)
-
-    keyboard = await get_dynamic_keyboard(show_admin)
-    await msg.edit_text(
-        text,
-        reply_markup=keyboard,
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
-
-
-async def add_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавляет администратора"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if chat.type != "private":
-        return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Использование: /add_admin <user_id>")
-        return
-
-    try:
-        new_admin_id = int(context.args[0])
-        ADMIN_USER_IDS.add(new_admin_id)
-        save_admin_ids()
-        await update.message.reply_text(f"✅ Пользователь {new_admin_id} добавлен в администраторы.")
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID пользователя.")
-
-
-async def del_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаляет администратора"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if chat.type != "private":
-        return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Использование: /del_admin <user_id>")
-        return
-
-    try:
-        del_admin_id = int(context.args[0])
-        if del_admin_id == user.id:
-            await update.message.reply_text("❌ Нельзя удалить самого себя.")
-            return
-
-        if del_admin_id in ADMIN_USER_IDS:
-            ADMIN_USER_IDS.remove(del_admin_id)
-            save_admin_ids()
-            await update.message.reply_text(f"✅ Пользователь {del_admin_id} удален из администраторов.")
-        else:
-            await update.message.reply_text(f"❌ Пользователь {del_admin_id} не найден в списке администраторов.")
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID пользователя.")
-
-
-async def list_admins_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает список администраторов"""
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if chat.type != "private":
-        return
-
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
-        return
-
-    if ADMIN_USER_IDS:
-        admins_list = "\n".join(f"• {admin_id}" for admin_id in ADMIN_USER_IDS)
-        await update.message.reply_text(f"👑 Администраторы ({len(ADMIN_USER_IDS)}):\n{admins_list}")
-    else:
-        await update.message.reply_text("📭 Список администраторов пуст.")
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help"""
-    help_text = (
-        "📋 Доступные команды:\n"
-        "/players - список игроков онлайн (доступно всем)\n"
-        "/status - статус сервера (доступно всем)\n\n"
-
-        "👑 Команды для администраторов (только в ЛС):\n"
-        "/start_server - запустить сервер\n"
-        "/stop_server - остановить сервер\n"
-        "/restart_server - перезагрузить сервер\n"
-        "/add_admin <id> - добавить администратора\n"
-        "/del_admin <id> - удалить администратора\n"
-        "/list_admins - список администраторов"
-    )
-    await update.message.reply_text(help_text)
-
-
-async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка работы бота"""
-    await update.message.reply_text("🏓 Понг! Бот работает.")
+# Команды вынесены в отдельные модули core/commands/
+# Здесь остаются только вспомогательные функции
 
 
 # ==================== ОБРАБОТЧИК КНОПОК ====================
@@ -836,7 +470,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result, idle_monitoring_enabled)
-        keyboard = await get_dynamic_keyboard(show_admin)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
         await query.edit_message_text(
             text,
             reply_markup=keyboard,
@@ -859,7 +493,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(
             settings_text,
-            reply_markup=get_settings_keyboard(),
+            reply_markup=get_settings_keyboard(idle_monitoring_enabled),
             parse_mode="HTML"
         )
 
@@ -914,7 +548,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(
             settings_text,
-            reply_markup=get_settings_keyboard(),
+            reply_markup=get_settings_keyboard(new_state),
             parse_mode="HTML"
         )
 
@@ -922,7 +556,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "back_to_main":
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result, monitoring_enabled=idle_monitoring_enabled)
-        keyboard = await get_dynamic_keyboard(show_admin)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
         await query.edit_message_text(
             text,
             reply_markup=keyboard,
@@ -951,7 +585,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         operation_type, initial_text = operation_map[data]
 
         # Обновляем сообщение
-        keyboard = await get_dynamic_keyboard(True)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, True)
         await query.edit_message_text(initial_text, reply_markup=keyboard)
 
         # Создаем фоновую задачу
@@ -1022,18 +656,65 @@ def main():
     application.post_init = post_init
     application.post_shutdown = post_shutdown
 
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("ping", ping_command))
-    application.add_handler(CommandHandler("players", players_command))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("start_server", start_server_command))
-    application.add_handler(CommandHandler("stop_server", stop_server_command))
-    application.add_handler(CommandHandler("restart_server", restart_server_command))
-    application.add_handler(CommandHandler("add_admin", add_admin_command))
-    application.add_handler(CommandHandler("del_admin", del_admin_command))
-    application.add_handler(CommandHandler("list_admins", list_admins_command))
+    # ✅ Создаем менеджеры
+    operation_manager = OperationManager(active_operations, perform_server_operation)
+    admin_manager = AdminManager(ADMIN_USER_IDS, save_admin_ids)
+    settings_manager = SettingsManager(
+        toggle_auto_shutdown,
+        lambda: idle_monitoring_enabled,
+        lambda: get_settings_keyboard(idle_monitoring_enabled)
+    )
+    
+    # Обертки для клавиатур
+    async def keyboard_builder(show_admin: bool):
+        return await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
+    
+    def balance_keyboard_builder():
+        return get_popup_balance_keyboard()
 
+    # ✅ Регистрируем команды через модули
+    register_info_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        lambda: idle_monitoring_enabled
+    )
+    
+    register_server_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        operation_manager
+    )
+    
+    register_admin_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        admin_manager
+    )
+    
+    register_settings_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        settings_manager,
+        IDLE_SHUTDOWN_TIMEOUT
+    )
+    
+    register_balance_handlers(
+        application,
+        facade,
+        is_admin,
+        keyboard_builder,
+        balance_keyboard_builder
+    )
+
+    # Регистрируем обработчик кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
 
     logger.info("🚀 Бот запускается...")
