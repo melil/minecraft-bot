@@ -6,7 +6,7 @@ from core.api.regru import RegRuClient
 from core.domain.model.server_status import ServerStatus
 from core.domain.model.server_state import ServerState
 from core.domain.model.action_result import ActionResult
-from core.minecraft.service import get_minecraft_status
+from core.minecraft.service import get_minecraft_status, get_server_uptime
 from core.config import MINECRAFT_SERVER_SSH
 
 logger = logging.getLogger(__name__)
@@ -47,12 +47,17 @@ class ServerFacade:
                 ip=server_data.get("ip"),
                 balance=balance_data.get("balance"),
                 hour_price=balance_data.get("hourly_cost"),
-                uptime=None  # REG.RU API не предоставляет uptime напрямую
+                uptime=None
             )
 
             # Если VPS не работает - возвращаем сразу
             if vps_state != ServerState.BOOTING:
                 return status
+            
+            # Получаем uptime через SSH
+            uptime = await get_server_uptime(MINECRAFT_SERVER_SSH)
+            if uptime:
+                status.uptime = uptime
 
             # Проверяем Minecraft
             mc_status = await get_minecraft_status(MINECRAFT_SERVER_SSH)

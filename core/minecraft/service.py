@@ -204,6 +204,35 @@ async def players_count(ssh_config: dict) -> int:
     return players
 
 
+async def get_server_uptime(ssh_config: dict) -> Optional[str]:
+    """
+    Получает uptime сервера через SSH команду
+    
+    Returns:
+        Строка с uptime (например: "2 days, 5:30") или None при ошибке
+    """
+    try:
+        client = SSHClient(**ssh_config)
+        # Получаем uptime в удобочитаемом формате
+        result = await client.execute(
+            "uptime -p 2>/dev/null || uptime | awk '{print $3, $4, $5}'",
+            timeout=10
+        )
+        
+        uptime_str = result.strip()
+        
+        # Очищаем вывод uptime -p (убираем "up ")
+        if uptime_str.startswith("up "):
+            uptime_str = uptime_str[3:]
+        
+        logger.debug(f"Server uptime: {uptime_str}")
+        return uptime_str if uptime_str else None
+        
+    except Exception as e:
+        logger.debug(f"Не удалось получить uptime: {e}")
+        return None
+
+
 async def get_minecraft_status(ssh_config: dict) -> dict:
     """
     Получает полный статус Minecraft сервера
