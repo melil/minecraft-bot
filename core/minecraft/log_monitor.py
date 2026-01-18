@@ -54,6 +54,16 @@ class ChatMessageEvent(MinecraftEvent):
 
 
 @dataclass
+class TelegramMessageEvent(MinecraftEvent):
+    """Событие сообщения для Telegram (префикс tg)"""
+    player_name: str
+    message: str
+    
+    def format_telegram(self) -> str:
+        return f"📨 <b>{self.player_name}:</b> {self.message}"
+
+
+@dataclass
 class PlayerDeathEvent(MinecraftEvent):
     """Событие смерти игрока"""
     death_message: str
@@ -146,6 +156,24 @@ class MinecraftLogParser:
                 if '[Telegram' in message or message.startswith('[Telegram'):
                     return None
                 
+                # Проверяем, начинается ли сообщение с "tg " или "tg:"
+                if message.lower().startswith('tg ') or message.lower().startswith('tg:'):
+                    # Убираем префикс "tg " или "tg:"
+                    actual_message = message[3:].strip() if message[2] == ' ' else message[2:].strip()
+                    
+                    # Если после префикса есть текст, создаем TelegramMessageEvent
+                    if actual_message:
+                        return TelegramMessageEvent(
+                            event_type='telegram',
+                            timestamp=timestamp,
+                            raw_message=line,
+                            player_name=player_name,
+                            message=actual_message
+                        )
+                    # Если текста нет, игнорируем
+                    return None
+                
+                # Обычное сообщение в чате
                 return ChatMessageEvent(
                     event_type='chat',
                     timestamp=timestamp,

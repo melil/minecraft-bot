@@ -320,7 +320,27 @@ async def minecraft_event_handler(event):
     Обработчик событий из Minecraft (вход/выход, чат, смерти, достижения)
     Отправляет события в группу Telegram
     """
-    if not log_monitoring_enabled or not bot_application:
+    if not bot_application:
+        return
+    
+    # Сообщения с префиксом "tg" отправляются ВСЕГДА, независимо от настроек
+    if event.event_type == 'telegram':
+        try:
+            from core.minecraft.log_monitor import format_event_for_telegram
+            message = format_event_for_telegram(event)
+            
+            await bot_application.bot.send_message(
+                chat_id=NOTIFICATION_GROUP_ID,
+                text=message,
+                parse_mode="HTML"
+            )
+            logger.info(f"📨 Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
+        except Exception as e:
+            logger.error(f"Ошибка отправки tg-сообщения: {e}")
+        return
+    
+    # Для остальных событий проверяем, включен ли мониторинг
+    if not log_monitoring_enabled:
         return
     
     # Проверяем, включен ли данный тип события
@@ -495,9 +515,8 @@ async def perform_server_operation(
                 # Управление мониторингом
                 if operation_type == "start" or operation_type == "restart":
                     start_idle_monitoring()
-                    # Запускаем мониторинг логов если включен
-                    if log_monitoring_enabled:
-                        await start_log_monitoring()
+                    # Запускаем мониторинг логов ВСЕГДА (для tg-сообщений)
+                    await start_log_monitoring()
                 elif operation_type == "stop":
                     stop_idle_monitoring()
                     # Останавливаем мониторинг логов
@@ -617,7 +636,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
-            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
+            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -675,7 +695,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
-            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
+            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -694,23 +715,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_emoji = "🟢" if new_state else "🔴"
         status_text = "включен" if new_state else "отключен"
         
-        await query.answer(f"{status_emoji} Мониторинг логов {status_text}", show_alert=True)
+        await query.answer(f"{status_emoji} Мониторинг событий {status_text}", show_alert=True)
         
-        # Запускаем или останавливаем мониторинг в зависимости от состояния сервера
-        try:
-            from core.minecraft.service import is_ready
-            server_ready = await is_ready(MINECRAFT_SERVER_SSH)
-            
-            if new_state and server_ready:
-                # Включаем мониторинг если сервер работает
-                await start_log_monitoring()
-                logger.info("✅ Мониторинг логов запущен (переключен пользователем)")
-            elif not new_state:
-                # Выключаем мониторинг
-                await stop_log_monitoring()
-                logger.info("🛑 Мониторинг логов остановлен (переключен пользователем)")
-        except Exception as e:
-            logger.error(f"Ошибка переключения мониторинга логов: {e}")
+        # Мониторинг логов работает всегда (для tg-сообщений), 
+        # но флаг log_monitoring_enabled контролирует отправку обычных событий
+        logger.info(f"🔄 Мониторинг событий переключен: {new_state} (tg-сообщения всегда работают)")
         
         # Обновляем меню настроек
         auto_status = "🟢 Включено" if idle_monitoring_enabled else "🔴 Отключено"
@@ -720,7 +729,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱️ <b>Автовыключение:</b> {auto_status}\n"
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
-            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n\n"
+            f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
+            f"<i>💡 Сообщения с префиксом 'tg' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -801,9 +811,9 @@ async def post_init(application: Application) -> None:
             logger.info("✅ Сервер работает, запускаю мониторинг")
             start_idle_monitoring()
             
-            # Запускаем мониторинг логов если включен
-            if log_monitoring_enabled:
-                await start_log_monitoring()
+            # Запускаем мониторинг логов ВСЕГДА (для отслеживания "tg" сообщений)
+            await start_log_monitoring()
+            logger.info(f"📜 Мониторинг логов запущен (tg-сообщения: всегда, остальные: {log_monitoring_enabled})")
         else:
             logger.info(f"⏸️ Сервер в состоянии {status.state}, мониторинг не запущен")
 
