@@ -81,7 +81,7 @@ class ServerStatus:
 
         result += "\n"
         result += "Бот:\n"
-        result += "\n🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
+        result += "🟢 <b>Автовыключение:</b> Включено" if monitoring_enabled else "🔴 <b>Автовыключение:</b> Выключено"
         return result
 
     @staticmethod
