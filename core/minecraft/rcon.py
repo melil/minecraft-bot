@@ -46,7 +46,7 @@ async def execute_rcon_command(ssh_config: dict, command: str) -> Optional[str]:
 
 async def say(ssh_config: dict, message: str, sender: Optional[str] = None) -> bool:
     """
-    Отправляет сообщение в игровой чат через команду /say
+    Отправляет сообщение в игровой чат через команду tellraw (для поддержки Unicode/кириллицы)
     
     Args:
         ssh_config: Конфигурация SSH подключения
@@ -57,33 +57,9 @@ async def say(ssh_config: dict, message: str, sender: Optional[str] = None) -> b
         True если успешно, False если ошибка
     """
     try:
-        # Формируем сообщение с отправителем
-        if sender:
-            full_message = f"[Telegram: {sender}] {message}"
-        else:
-            full_message = f"[Telegram] {message}"
-        
-        # Отправляем через say команду
-        result = await execute_rcon_command(ssh_config, f"say {full_message}")
-        
-        logger.debug(f"RCON say result: '{result}' (type: {type(result)})")
-        
-        # Команда say может вернуть пустую строку - это ОК
-        # Ошибка будет если result is None (exception в execute_rcon_command)
-        # Или если в ответе есть слово "error" или "failed"
-        if result is None:
-            logger.error(f"❌ RCON вернул None - ошибка выполнения команды")
-            return False
-        
-        # Проверяем на ошибки в ответе
-        result_lower = result.lower()
-        if "error" in result_lower or "failed" in result_lower or "unknown command" in result_lower:
-            logger.error(f"❌ Ошибка в ответе RCON: {result}")
-            return False
-        
-        # Если дошли сюда - команда выполнена успешно
-        logger.info(f"✅ Сообщение отправлено в Minecraft: {full_message}")
-        return True
+        # Используем tellraw вместо say для лучшей поддержки кириллицы и Unicode
+        # tellraw работает с JSON и правильно обрабатывает любые символы
+        return await tellraw(ssh_config, message, color="white", sender=sender)
             
     except Exception as e:
         logger.error(f"❌ Исключение при отправке сообщения: {e}")
@@ -104,25 +80,37 @@ async def tellraw(ssh_config: dict, message: str, color: str = "white", sender: 
         True если успешно, False если ошибка
     """
     try:
-        # Экранируем кавычки в сообщении
-        escaped_message = message.replace('"', '\\"')
+        import json
         
-        # Формируем JSON для tellraw
+        # Используем json.dumps для правильного экранирования всех символов включая Unicode
         if sender:
-            json_message = (
-                f'{{"text":"[Telegram: {sender}] ","color":"aqua"}},'
-                f'{{"text":"{escaped_message}","color":"{color}"}}'
-            )
+            # Создаем структуру для tellraw
+            tellraw_json = [
+                {"text": f"[Telegram: {sender}] ", "color": "aqua"},
+                {"text": message, "color": color}
+            ]
         else:
-            json_message = (
-                f'{{"text":"[Telegram] ","color":"aqua"}},'
-                f'{{"text":"{escaped_message}","color":"{color}"}}'
-            )
+            tellraw_json = [
+                {"text": "[Telegram] ", "color": "aqua"},
+                {"text": message, "color": color}
+            ]
+        
+        # Преобразуем в JSON строку с ensure_ascii=False для поддержки Unicode
+        json_str = json.dumps(tellraw_json, ensure_ascii=False)
         
         # Отправляем команду tellraw @a (всем игрокам)
-        result = await execute_rcon_command(ssh_config, f"tellraw @a [{json_message}]")
+        command = f"tellraw @a {json_str}"
+        logger.debug(f"Отправка tellraw команды: {command[:200]}")
+        
+        result = await execute_rcon_command(ssh_config, command)
         
         if result is not None:
+            # Проверяем на ошибки
+            result_lower = result.lower() if result else ""
+            if "error" in result_lower or "failed" in result_lower or "unknown" in result_lower:
+                logger.error(f"❌ Ошибка в ответе tellraw: {result}")
+                return False
+            
             logger.info(f"✅ Форматированное сообщение отправлено в Minecraft")
             return True
         else:
@@ -130,7 +118,7 @@ async def tellraw(ssh_config: dict, message: str, color: str = "white", sender: 
             return False
             
     except Exception as e:
-        logger.error(f"Ошибка отправки форматированного сообщения: {e}")
+        logger.error(f"❌ Ошибка отправки форматированного сообщения: {e}")
         return False
 
 

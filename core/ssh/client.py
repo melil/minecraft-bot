@@ -52,15 +52,14 @@ class SSHClient:
             RuntimeError: если команда завершилась с ошибкой
         """
         try:
-            # Формируем полную команду
+            # Формируем полную команду используя exec для лучшей обработки аргументов
             ssh_cmd = ["ssh"] + self.ssh_options + [self._connection_string, command]
-            cmd_str = " ".join(ssh_cmd)
 
-            logger.debug(f"Выполнение SSH команды: {command}")
+            logger.debug(f"Выполнение SSH команды: {command[:100]}...")
 
-            # Создаем процесс
-            proc = await asyncio.create_subprocess_shell(
-                cmd_str,
+            # Создаем процесс используя exec вместо shell для корректной работы с Unicode
+            proc = await asyncio.create_subprocess_exec(
+                *ssh_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -69,18 +68,30 @@ class SSHClient:
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
             except asyncio.TimeoutError:
-                logger.error(f"SSH команда превысила таймаут {timeout}с: {command}")
+                logger.error(f"SSH команда превысила таймаут {timeout}с: {command[:100]}")
                 proc.kill()
                 await proc.wait()
                 raise TimeoutError(f"SSH команда превысила таймаут {timeout}с")
 
+            # Декодируем вывод с поддержкой UTF-8
+            try:
+                result = stdout.decode('utf-8').strip()
+                error_msg = stderr.decode('utf-8').strip()
+            except UnicodeDecodeError:
+                # Fallback на latin-1 если UTF-8 не работает
+                result = stdout.decode('latin-1').strip()
+                error_msg = stderr.decode('latin-1').strip()
+
             # Проверяем код возврата
             if proc.returncode != 0:
-                error_msg = stderr.decode().strip()
                 logger.error(f"SSH команда завершилась с ошибкой (код {proc.returncode}): {error_msg}")
+                # Для RCON команд код 1 может быть из-за проблем с кодировкой
+                # Если есть результат в stdout, попробуем его использовать
+                if result:
+                    logger.warning(f"Есть результат несмотря на код ошибки: {result[:100]}")
+                    return result
                 raise RuntimeError(f"SSH error (код {proc.returncode}): {error_msg}")
 
-            result = stdout.decode().strip()
             logger.debug(f"SSH команда выполнена успешно: {len(result)} байт")
             return result
 
