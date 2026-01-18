@@ -301,6 +301,9 @@ class Database:
         deaths: Optional[int] = None,
         mob_kills: Optional[int] = None,
         jumps: Optional[int] = None,
+        blocks_mined: Optional[int] = None,
+        damage_dealt: Optional[int] = None,
+        damage_taken: Optional[int] = None,
         minecraft_nickname: Optional[str] = None,
         last_seen: Optional[datetime] = None
     ) -> bool:
@@ -329,6 +332,12 @@ class Database:
                 player.mob_kills = mob_kills
             if jumps is not None:
                 player.jumps = jumps
+            if blocks_mined is not None:
+                player.blocks_mined = blocks_mined
+            if damage_dealt is not None:
+                player.damage_dealt = damage_dealt
+            if damage_taken is not None:
+                player.damage_taken = damage_taken
             if minecraft_nickname is not None:
                 player.minecraft_nickname = minecraft_nickname
             if last_seen is not None:

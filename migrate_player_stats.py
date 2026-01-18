@@ -48,6 +48,7 @@ def migrate_player_stats():
             expected_columns = {
                 'id', 'minecraft_uuid', 'minecraft_nickname', 
                 'playtime_ticks', 'deaths', 'mob_kills', 'jumps',
+                'blocks_mined', 'damage_dealt', 'damage_taken',
                 'last_updated', 'first_seen', 'last_seen'
             }
             

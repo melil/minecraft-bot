@@ -96,6 +96,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 deaths=stats.get('deaths', 0),
                 mob_kills=stats.get('mob_kills', 0),
                 jumps=stats.get('jumps', 0),
+                blocks_mined=stats.get('blocks_mined', 0),
+                damage_dealt=stats.get('damage_dealt', 0),
+                damage_taken=stats.get('damage_taken', 0),
                 last_seen=datetime.utcnow()
             )
             logger.info(f"💾 Статистика для {stats['nickname']} сохранена в кэш")
@@ -106,6 +109,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱️ <b>Время в игре:</b> {stats['playtime_formatted']}\n"
             f"💀 <b>Смертей:</b> {stats.get('deaths', 0)}\n"
             f"⚔️ <b>Убито мобов:</b> {stats.get('mob_kills', 0)}\n"
+            f"⛏️ <b>Добыто блоков:</b> {stats.get('blocks_mined', 0)}\n"
             f"🦘 <b>Прыжков:</b> {stats.get('jumps', 0)}\n"
         )
         
@@ -188,7 +192,10 @@ async def top_playtime_command(update: Update, context: ContextTypes.DEFAULT_TYP
                     playtime_ticks=player['playtime_ticks'],
                     deaths=player.get('deaths', 0),
                     mob_kills=player.get('mob_kills', 0),
-                    jumps=player.get('jumps', 0)
+                    jumps=player.get('jumps', 0),
+                    blocks_mined=player.get('blocks_mined', 0),
+                    damage_dealt=player.get('damage_dealt', 0),
+                    damage_taken=player.get('damage_taken', 0)
                 )
             logger.info(f"💾 Кэш обновлен для {len(top_players)} игроков")
         
@@ -257,7 +264,10 @@ async def stats_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 playtime_ticks=player['playtime_ticks'],
                 deaths=player.get('deaths', 0),
                 mob_kills=player.get('mob_kills', 0),
-                jumps=player.get('jumps', 0)
+                jumps=player.get('jumps', 0),
+                blocks_mined=player.get('blocks_mined', 0),
+                damage_dealt=player.get('damage_dealt', 0),
+                damage_taken=player.get('damage_taken', 0)
             )
         
         # Считаем статистику

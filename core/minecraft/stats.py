@@ -236,8 +236,14 @@ async def get_player_stats(ssh_config: dict, player_uuid: str, nickname: Optiona
         # Дополнительные метрики
         killed_stats = stats.get('stats', {}).get('minecraft:killed', {})
         killed_by_stats = stats.get('stats', {}).get('minecraft:killed_by', {})
+        mined_stats = stats.get('stats', {}).get('minecraft:mined', {})
         
         mob_kills = sum(killed_stats.values())
+        blocks_mined = sum(mined_stats.values())
+        
+        # Урон
+        damage_dealt = custom_stats.get('minecraft:damage_dealt', 0)
+        damage_taken = custom_stats.get('minecraft:damage_taken', 0)
         
         return {
             'uuid': player_uuid,
@@ -248,6 +254,13 @@ async def get_player_stats(ssh_config: dict, player_uuid: str, nickname: Optiona
             'deaths': deaths,
             'mob_kills': mob_kills,
             'jumps': jumps,
+            'blocks_mined': blocks_mined,
+            'damage_dealt': damage_dealt,
+            'damage_taken': damage_taken,
+            # Детальная статистика для расширенного просмотра
+            'killed_detailed': killed_stats,
+            'killed_by_detailed': killed_by_stats,
+            'mined_detailed': mined_stats,
         }
         
     except Exception as e:
@@ -330,31 +343,45 @@ async def get_all_players_stats(ssh_config: dict, limit: Optional[int] = None) -
         return []
 
 
-async def get_top_players_by_playtime(ssh_config: dict, limit: int = 10) -> List[dict]:
+async def get_top_players_by_playtime(ssh_config: dict, limit: int = 10, force_reload: bool = False) -> List[dict]:
     """
     Получает топ игроков по времени игры
     
     Args:
         ssh_config: конфигурация SSH
         limit: количество игроков в топе
+        force_reload: принудительная загрузка с сервера (игнорирует кэш)
     
     Returns:
         Отсортированный список игроков
     """
     try:
-        all_stats = await get_all_players_stats(ssh_config)
+        # Всегда загружаем ВСЕ игроки с сервера для точного топа
+        logger.info(f"🔄 Загрузка статистики всех игроков для топа (force_reload={force_reload})")
+        all_stats = await get_all_players_stats(ssh_config, limit=None)
+        
+        if not all_stats:
+            logger.warning("❌ Не удалось загрузить статистику игроков")
+            return []
+        
+        logger.info(f"📊 Загружено игроков: {len(all_stats)}")
         
         # Сортируем по времени игры (убывание)
         sorted_stats = sorted(
             all_stats,
-            key=lambda x: x['playtime_ticks'],
+            key=lambda x: x.get('playtime_ticks', 0),
             reverse=True
         )
+        
+        # Логируем топ для отладки
+        logger.info(f"🏆 Топ-{min(limit, len(sorted_stats))} игроков:")
+        for i, player in enumerate(sorted_stats[:limit], 1):
+            logger.info(f"  {i}. {player['nickname']:15s} - {player['playtime_ticks']:10d} ticks ({player['playtime_formatted']})")
         
         return sorted_stats[:limit]
         
     except Exception as e:
-        logger.error(f"Ошибка получения топа игроков: {e}")
+        logger.error(f"Ошибка получения топа игроков: {e}", exc_info=True)
         return []
 
 
@@ -384,3 +411,56 @@ async def find_player_by_nickname(ssh_config: dict, nickname: str) -> Optional[T
     except Exception as e:
         logger.error(f"Ошибка поиска игрока {nickname}: {e}")
         return None
+
+
+def format_detailed_stats(detailed_dict: dict, category: str, limit: int = 10) -> str:
+    """
+    Форматирует детальную статистику в читаемый вид
+    
+    Args:
+        detailed_dict: словарь с детальной статистикой
+        category: категория ('killed', 'mined', 'killed_by')
+        limit: количество записей для отображения
+    
+    Returns:
+        Отформатированная строка
+    """
+    if not detailed_dict:
+        return "Нет данных"
+    
+    # Сортируем по значению (убывание)
+    sorted_items = sorted(detailed_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
+    
+    lines = []
+    for key, value in sorted_items:
+        # Убираем префикс "minecraft:"
+        name = key.replace('minecraft:', '')
+        # Заменяем подчеркивания на пробелы
+        name = name.replace('_', ' ').title()
+        lines.append(f"  • <b>{name}:</b> {value}")
+    
+    return "\n".join(lines) if lines else "Нет данных"
+
+
+def get_top_killed_mobs(killed_dict: dict, limit: int = 5) -> List[Tuple[str, int]]:
+    """Возвращает топ убитых мобов"""
+    if not killed_dict:
+        return []
+    sorted_items = sorted(killed_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
+    return [(k.replace('minecraft:', '').replace('_', ' ').title(), v) for k, v in sorted_items]
+
+
+def get_top_mined_blocks(mined_dict: dict, limit: int = 5) -> List[Tuple[str, int]]:
+    """Возвращает топ добытых блоков"""
+    if not mined_dict:
+        return []
+    sorted_items = sorted(mined_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
+    return [(k.replace('minecraft:', '').replace('_', ' ').title(), v) for k, v in sorted_items]
+
+
+def get_top_deaths_from(killed_by_dict: dict, limit: int = 5) -> List[Tuple[str, int]]:
+    """Возвращает топ причин смерти"""
+    if not killed_by_dict:
+        return []
+    sorted_items = sorted(killed_by_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
+    return [(k.replace('minecraft:', '').replace('_', ' ').title(), v) for k, v in sorted_items]

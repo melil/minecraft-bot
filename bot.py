@@ -971,12 +971,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⏱️ <b>Время в игре:</b> {stats['playtime_formatted']}\n"
                 f"💀 <b>Смертей:</b> {stats.get('deaths', 0)}\n"
                 f"⚔️ <b>Убито мобов:</b> {stats.get('mob_kills', 0)}\n"
+                f"⛏️ <b>Добыто блоков:</b> {stats.get('blocks_mined', 0)}\n"
                 f"🦘 <b>Прыжков:</b> {stats.get('jumps', 0)}\n"
             )
             
+            # Используем клавиатуру с детальной статистикой
+            from core.bot.keyboards import get_player_stats_keyboard
+            uuid_short = player_uuid[:8]
+            
+            # Сохраняем полный UUID в контексте для детальной статистики
+            context.bot_data[f'player_uuid_{uuid_short}'] = player_uuid
+            context.bot_data[f'player_stats_{uuid_short}'] = stats
+            
             await query.edit_message_text(
                 message,
-                reply_markup=get_stats_menu_keyboard(),
+                reply_markup=get_player_stats_keyboard(uuid_short),
                 parse_mode="HTML"
             )
             
@@ -996,49 +1005,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("⏳ Загружаю топ игроков...")
         
         try:
-            # Проверяем кэш
-            cached_players = db.get_top_players_by_playtime(limit=10)
+            # ВСЕГДА загружаем свежие данные с сервера для точного топа
+            logger.info("🔄 Загрузка свежего топа с сервера")
+            top_players = await get_top_players_by_playtime(MINECRAFT_SERVER_SSH, limit=10, force_reload=True)
             
-            use_cache = False
-            if cached_players:
-                from datetime import datetime
-                latest_update = max(p.last_updated for p in cached_players)
-                cache_age = (datetime.utcnow() - latest_update).total_seconds() / 60
-                
-                if cache_age < 10:
-                    use_cache = True
+            if not top_players:
+                await query.edit_message_text(
+                    "❌ Не удалось загрузить топ игроков",
+                    reply_markup=get_stats_menu_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
             
-            if use_cache:
-                top_players = [
-                    {
-                        'nickname': p.minecraft_nickname or 'Unknown',
-                        'playtime_ticks': p.playtime_ticks,
-                        'playtime_formatted': format_playtime(ticks_to_timedelta(p.playtime_ticks))
-                    }
-                    for p in cached_players
-                ]
-            else:
-                # Загружаем с сервера
-                top_players = await get_top_players_by_playtime(MINECRAFT_SERVER_SSH, limit=10)
-                
-                if not top_players:
-                    await query.edit_message_text(
-                        "❌ Не удалось загрузить топ игроков",
-                        reply_markup=get_stats_menu_keyboard(),
-                        parse_mode="HTML"
-                    )
-                    return
-                
-                # Обновляем кэш
-                for player in top_players:
-                    db.update_player_stats(
-                        minecraft_uuid=player['uuid'],
-                        minecraft_nickname=player['nickname'],
-                        playtime_ticks=player['playtime_ticks'],
-                        deaths=player.get('deaths', 0),
-                        mob_kills=player.get('mob_kills', 0),
-                        jumps=player.get('jumps', 0)
-                    )
+            # Обновляем кэш
+            for player in top_players:
+                db.update_player_stats(
+                    minecraft_uuid=player['uuid'],
+                    minecraft_nickname=player['nickname'],
+                    playtime_ticks=player['playtime_ticks'],
+                    deaths=player.get('deaths', 0),
+                    mob_kills=player.get('mob_kills', 0),
+                    jumps=player.get('jumps', 0),
+                    blocks_mined=player.get('blocks_mined', 0),
+                    damage_dealt=player.get('damage_dealt', 0),
+                    damage_taken=player.get('damage_taken', 0)
+                )
             
             # Формируем сообщение
             if not top_players:
@@ -1073,6 +1064,105 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_stats_menu_keyboard(),
                 parse_mode="HTML"
             )
+
+    # ========== ДЕТАЛЬНАЯ СТАТИСТИКА ==========
+    elif data.startswith("stats_detail:"):
+        from core.minecraft.stats import get_top_killed_mobs, get_top_mined_blocks, get_top_deaths_from
+        from core.bot.keyboards import get_player_stats_keyboard
+        
+        try:
+            parts = data.split(":")
+            uuid_short = parts[1]
+            detail_type = parts[2]
+            
+            # Получаем сохраненную статистику
+            stats = context.bot_data.get(f'player_stats_{uuid_short}')
+            
+            if not stats:
+                await query.answer("❌ Данные устарели, загрузите статистику заново", show_alert=True)
+                await query.edit_message_text(
+                    "❌ Данные устарели",
+                    reply_markup=get_stats_menu_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+            
+            nickname = stats['nickname']
+            
+            # Формируем сообщение в зависимости от типа
+            if detail_type == "mobs":
+                top_mobs = get_top_killed_mobs(stats.get('killed_detailed', {}), limit=10)
+                
+                message = f"⚔️ <b>Убито мобов — {nickname}</b>\n\n"
+                message += f"<b>Всего убито:</b> {stats.get('mob_kills', 0)}\n\n"
+                
+                if top_mobs:
+                    message += "<b>Топ-10:</b>\n"
+                    for i, (mob_name, count) in enumerate(top_mobs, 1):
+                        message += f"{i}. <b>{mob_name}:</b> {count}\n"
+                else:
+                    message += "<i>Данных нет</i>"
+            
+            elif detail_type == "blocks":
+                top_blocks = get_top_mined_blocks(stats.get('mined_detailed', {}), limit=10)
+                
+                message = f"⛏️ <b>Добыто блоков — {nickname}</b>\n\n"
+                message += f"<b>Всего добыто:</b> {stats.get('blocks_mined', 0)}\n\n"
+                
+                if top_blocks:
+                    message += "<b>Топ-10:</b>\n"
+                    for i, (block_name, count) in enumerate(top_blocks, 1):
+                        message += f"{i}. <b>{block_name}:</b> {count}\n"
+                else:
+                    message += "<i>Данных нет</i>"
+            
+            elif detail_type == "deaths":
+                top_deaths = get_top_deaths_from(stats.get('killed_by_detailed', {}), limit=10)
+                
+                message = f"💀 <b>Смерти — {nickname}</b>\n\n"
+                message += f"<b>Всего смертей:</b> {stats.get('deaths', 0)}\n\n"
+                
+                if top_deaths:
+                    message += "<b>Топ причин:</b>\n"
+                    for i, (cause, count) in enumerate(top_deaths, 1):
+                        message += f"{i}. <b>{cause}:</b> {count}\n"
+                else:
+                    message += "<i>Данных нет</i>"
+            
+            elif detail_type == "damage":
+                damage_dealt = stats.get('damage_dealt', 0)
+                damage_taken = stats.get('damage_taken', 0)
+                
+                # Конвертируем в обычные единицы (делим на 10, так как хранится в десятых долях)
+                damage_dealt_hp = damage_dealt / 10
+                damage_taken_hp = damage_taken / 10
+                
+                message = f"💥 <b>Урон — {nickname}</b>\n\n"
+                message += f"⚔️ <b>Нанесено урона:</b> {damage_dealt_hp:.1f} ❤️\n"
+                message += f"💔 <b>Получено урона:</b> {damage_taken_hp:.1f} ❤️\n\n"
+                
+                if damage_dealt > 0 and damage_taken > 0:
+                    ratio = damage_dealt / damage_taken
+                    message += f"📊 <b>Соотношение:</b> {ratio:.2f}\n"
+                    
+                    if ratio > 2:
+                        message += "<i>⭐ Отличный боец!</i>"
+                    elif ratio > 1:
+                        message += "<i>✓ Хороший результат</i>"
+                    elif ratio > 0.5:
+                        message += "<i>≈ Средний уровень</i>"
+                    else:
+                        message += "<i>⚠ Нужно быть осторожнее</i>"
+            
+            await query.edit_message_text(
+                message,
+                reply_markup=get_player_stats_keyboard(uuid_short),
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка детальной статистики: {e}", exc_info=True)
+            await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
     # ========== ОПЕРАЦИИ С СЕРВЕРОМ ==========
     elif data in ["start_server", "stop_server", "restart_server"]:

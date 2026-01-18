@@ -127,6 +127,28 @@ def get_stats_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_player_stats_keyboard(player_uuid_short: str) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для просмотра детальной статистики игрока
+    
+    Args:
+        player_uuid_short: первые 8 символов UUID
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton("⚔️ Мобы", callback_data=f"stats_detail:{player_uuid_short}:mobs"),
+            InlineKeyboardButton("⛏️ Блоки", callback_data=f"stats_detail:{player_uuid_short}:blocks")
+        ],
+        [
+            InlineKeyboardButton("💀 Смерти", callback_data=f"stats_detail:{player_uuid_short}:deaths"),
+            InlineKeyboardButton("💥 Урон", callback_data=f"stats_detail:{player_uuid_short}:damage")
+        ],
+        [InlineKeyboardButton("◀️ Назад к меню", callback_data="stats_menu")]
+    ]
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_players_list_keyboard(players: list, page: int = 0, page_size: int = 10) -> InlineKeyboardMarkup:
     """
     Клавиатура со списком игроков для выбора
