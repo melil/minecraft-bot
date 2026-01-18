@@ -878,7 +878,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Оплачивайте по ссылке введя айпи сервера <code>{result.ip}</code> (кликабельно) в поле ввода reg.cloud/prolong\n"
             "Средства будут зачислены автоматически\n\n"
             "Минимальная сумма пополнения: 100 ₽\n\n"
-            "Текущий баланс: {result.balance} ₽\n"
+            f"Текущий баланс: {result.balance} ₽\n"
         )
 
         if result.state == ServerState.READY:
