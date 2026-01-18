@@ -335,11 +335,11 @@ async def minecraft_event_handler(event):
             # Используем встроенный метод форматирования
             message = event.format_telegram()
             
-            # Создаем inline кнопку "Ответить" с автозаполнением текста
+            # Создаем inline кнопку "Ответить" с callback_data
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(
                     text="💬 Ответить",
-                    switch_inline_query_current_chat=f"/say {event.player_name} "
+                    callback_data=f"reply_mc:{event.player_name}"
                 )]
             ])
             
@@ -607,8 +607,7 @@ async def perform_server_operation(
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатий на inline кнопки"""
     query = update.callback_query
-    await query.answer()
-
+    
     user = update.effective_user
     chat = update.effective_chat
     
@@ -618,6 +617,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Register group if in group
     if chat.type in ["group", "supergroup"]:
         register_or_update_group(chat)
+    
+    data = query.data
+    
+    # ========== ОТВЕТ НА СООБЩЕНИЕ ИЗ MINECRAFT ==========
+    if data.startswith("reply_mc:"):
+        player_name = data.split(":", 1)[1]
+        reply_text = f"💬 Чтобы ответить игроку <b>{player_name}</b>, используйте:\n\n<code>/say {player_name} ваш_текст</code>\n\n📋 Нажмите на команду, чтобы скопировать"
+        await query.answer(
+            text=f"Используйте: /say {player_name} ваш_текст",
+            show_alert=True
+        )
+        return
+    
+    # Отвечаем на callback для остальных кнопок
+    await query.answer()
     
     # Логика прав доступа:
     # - В группе: все участники группы могут нажимать кнопки
@@ -630,8 +644,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Это группа (все участники группы видят кнопки управления)
     # 2. Это личка с ботом И пользователь админ
     show_admin = is_group_chat or (is_private_chat and is_user_admin)
-
-    data = query.data
 
     # ========== СТАТУС ==========
     if data == "status":
@@ -660,7 +672,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'tg:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -719,7 +731,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'tg:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
@@ -753,7 +765,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<i>Сервер выключается через {IDLE_SHUTDOWN_TIMEOUT // 60} мин. при 0 игроков</i>\n\n"
             f"📜 <b>Мониторинг событий MC:</b> {log_status}\n"
             f"<i>События из Minecraft (вход/выход, чат, смерти, достижения)</i>\n"
-            f"<i>💡 Сообщения с префиксом 'telegram:' всегда передаются в Telegram</i>\n\n"
+            f"<i>💡 Сообщения с префиксом 'tg:' всегда передаются в Telegram</i>\n\n"
             "Используйте кнопки ниже для изменения настроек:"
         )
         await query.edit_message_text(
