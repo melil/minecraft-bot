@@ -84,7 +84,7 @@ class ServerStatus:
 
         result += "\n"
         result += "Бот:\n"
-        result += monitoring_status
+        result += "\n" + monitoring_status
 
         return result
 
