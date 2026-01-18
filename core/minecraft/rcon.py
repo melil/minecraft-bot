@@ -66,15 +66,27 @@ async def say(ssh_config: dict, message: str, sender: Optional[str] = None) -> b
         # Отправляем через say команду
         result = await execute_rcon_command(ssh_config, f"say {full_message}")
         
-        if result is not None:
-            logger.info(f"✅ Сообщение отправлено в Minecraft: {full_message}")
-            return True
-        else:
-            logger.error(f"❌ Не удалось отправить сообщение в Minecraft")
+        logger.debug(f"RCON say result: '{result}' (type: {type(result)})")
+        
+        # Команда say может вернуть пустую строку - это ОК
+        # Ошибка будет если result is None (exception в execute_rcon_command)
+        # Или если в ответе есть слово "error" или "failed"
+        if result is None:
+            logger.error(f"❌ RCON вернул None - ошибка выполнения команды")
             return False
+        
+        # Проверяем на ошибки в ответе
+        result_lower = result.lower()
+        if "error" in result_lower or "failed" in result_lower or "unknown command" in result_lower:
+            logger.error(f"❌ Ошибка в ответе RCON: {result}")
+            return False
+        
+        # Если дошли сюда - команда выполнена успешно
+        logger.info(f"✅ Сообщение отправлено в Minecraft: {full_message}")
+        return True
             
     except Exception as e:
-        logger.error(f"Ошибка отправки сообщения: {e}")
+        logger.error(f"❌ Исключение при отправке сообщения: {e}")
         return False
 
 
