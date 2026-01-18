@@ -75,7 +75,7 @@ class ServerStatus:
         if status.balance:
             result+= f"💰 <b>Баланс:</b> {status.balance} ₽\n"
 
-        if status.hour_price:
+        if status.state == ServerState.READY and status.hour_price:
             result+= f"🔥 <b>Стоимость в час:</b> {status.hour_price} ₽\n"
 
         if status.state == ServerState.READY and status.minecraft_active:

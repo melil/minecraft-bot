@@ -875,13 +875,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Вы оплачиваете деньги на счет в Т-банк по ссылке, дальше я оплачиваю руками через ЛК\n\n"
             "<b>🟩.:Автоматический</b>\n"
             "СБП, Банковская карта, Ю-мани, Кэш, СберПей\n"
-            f"Оплачивайте по ссылке введя айпи сервера <code>{result.ip}</code> (кликабельно) в поле ввода reg.cloud\n"
+            f"Оплачивайте по ссылке введя айпи сервера <code>{result.ip}</code> (кликабельно) в поле ввода reg.cloud/prolong\n"
             "Средства будут зачислены автоматически\n\n"
             "Минимальная сумма пополнения: 100 ₽\n\n"
-            f"Текущий баланс: {result.balance} ₽\n"
-            f"Стоимость в час: {result.hour_price} ₽\n\n"
-            "Используйте кнопки ниже для выбора:"
+            "Текущий баланс: {result.balance} ₽\n"
         )
+
+        if result.state == ServerState.READY:
+            settings_text += f"Стоимость в час: {result.hour_price} ₽\n\n"
+
+        settings_text +=  "Используйте кнопки ниже для выбора:"
+
         await query.edit_message_text(
             settings_text,
             reply_markup=get_popup_balance_keyboard(),
