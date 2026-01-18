@@ -438,7 +438,7 @@ async def get_dynamic_keyboard(show_admin_buttons: bool = False) -> InlineKeyboa
     keyboard = [
         [
             InlineKeyboardButton("📊 Статус", callback_data="status"),
-            InlineKeyboardButton("💵 Пополнить", url="https://www.tbank.ru/cf/2dzkoyJFsJc")
+            InlineKeyboardButton("💵 Пополнить", callback_data="popup_balance")
         ]
     ]
 
