@@ -79,7 +79,7 @@ class ServerStatus:
         else:
             result += f"\n🎮 <b>Minecraft:</b> Не запущен"
 
-        result += "\nБот:\n\n"
+        result += "Бот:\n"
         result += (
             "🟢 <b>Автовыключение:</b> Включено"
             if monitoring_enabled
