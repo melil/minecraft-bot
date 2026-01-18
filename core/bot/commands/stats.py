@@ -167,18 +167,18 @@ async def top_playtime_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Обновляем кэш
         for player in top_players:
-                db.update_player_stats(
-                    minecraft_uuid=player['uuid'],
-                    minecraft_nickname=player['nickname'],
-                    playtime_ticks=player['playtime_ticks'],
-                    deaths=player.get('deaths', 0),
-                    mob_kills=player.get('mob_kills', 0),
-                    jumps=player.get('jumps', 0),
-                    blocks_mined=player.get('blocks_mined', 0),
-                    damage_dealt=player.get('damage_dealt', 0),
-                    damage_taken=player.get('damage_taken', 0)
-                )
-            logger.info(f"💾 Кэш обновлен для {len(top_players)} игроков")
+            db.update_player_stats(
+                minecraft_uuid=player['uuid'],
+                minecraft_nickname=player['nickname'],
+                playtime_ticks=player['playtime_ticks'],
+                deaths=player.get('deaths', 0),
+                mob_kills=player.get('mob_kills', 0),
+                jumps=player.get('jumps', 0),
+                blocks_mined=player.get('blocks_mined', 0),
+                damage_dealt=player.get('damage_dealt', 0),
+                damage_taken=player.get('damage_taken', 0)
+            )
+        logger.info(f"💾 Кэш обновлен для {len(top_players)} игроков")
         
         # Формируем сообщение
         if not top_players:
