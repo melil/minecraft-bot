@@ -508,10 +508,10 @@ def get_popup_balance_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура пополнения баланса"""
     keyboard = [
         [InlineKeyboardButton(
-            f"🟨 Тиньков сбор:",
+            f"🟨",
             url="https://www.tbank.ru/cf/2dzkoyJFsJc"
         ), InlineKeyboardButton(
-            f"🟩 СБП, Карта и тд (моментально):",
+            f"🟩",
             url="https://reg.cloud/prolong"
         )],
         [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
@@ -870,13 +870,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings_text = (
             "⚙️ <b>Пополнение VPS</b>\n\n"
             f"Есть два варианта:\n"
-            "<b>1.:Полуавтоматический</b>\n"
-            "Вы отправляете мне на Т-банк по ссылке, дальше я оплачиваю руками через ЛК\n\n"
-            "<b>2.:Автоматический</b>\n\n"
+            "<b>🟨.:Полуавтоматический</b>\n"
+            "Банковская карта (номер, срок действия, cvv)\n"
+            "Вы оплачиваете деньги на счет в Т-банк по ссылке, дальше я оплачиваю руками через ЛК\n\n"
+            "<b>🟩.:Автоматический</b>\n"
+            "СБП, Банковская карта, Ю-мани, Кэш, СберПей\n"
             f"Оплачивайте по ссылке введя айпи сервера <code>{result.ip}</code> (кликабельно) в поле ввода reg.cloud\n"
             "Средства будут зачислены автоматически\n\n"
-            f"Текущий баланс: {result.balance}\n"
-            f"Стоимость в час: {result.hour_price}\n\n"
+            "Минимальная сумма пополнения: 100 ₽\n\n"
+            f"Текущий баланс: {result.balance} ₽\n"
+            f"Стоимость в час: {result.hour_price} ₽\n\n"
             "Используйте кнопки ниже для выбора:"
         )
         await query.edit_message_text(
