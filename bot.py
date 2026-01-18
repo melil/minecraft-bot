@@ -577,9 +577,9 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
     chat = update.effective_chat
     user = update.effective_user
 
-    if chat.type != "private":
-        await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
-        return
+    # if chat.type != "private":
+    #     await update.message.reply_text("⚠️ Эта команда доступна только в личных сообщениях.")
+    #     return
 
     if not is_admin(user.id):
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
