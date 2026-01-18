@@ -4,7 +4,7 @@
 """
 import asyncio
 import logging
-from core.config import MINECRAFT_SERVER_SSH, NOTIFICATION_GROUP_ID
+from core.config import MINECRAFT_SERVER_SSH
 from core.minecraft.log_monitor import MinecraftLogMonitor, MinecraftEvent
 
 # Настройка логирования
@@ -13,6 +13,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ID группы для тестирования (можно передать как аргумент)
+TEST_GROUP_ID = -5142213077  # Замените на ваш ID группы если нужно
 
 
 async def test_event_handler(event: MinecraftEvent):
@@ -38,7 +41,7 @@ async def main():
     print(f"   SSH Host: {MINECRAFT_SERVER_SSH['host']}")
     print(f"   SSH User: {MINECRAFT_SERVER_SSH['user']}")
     print(f"   SSH Port: {MINECRAFT_SERVER_SSH['port']}")
-    print(f"   Telegram Group ID: {NOTIFICATION_GROUP_ID}")
+    print(f"   Test Group ID: {TEST_GROUP_ID}")
     print()
     
     # Создаем монитор
