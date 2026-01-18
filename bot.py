@@ -326,22 +326,33 @@ async def minecraft_event_handler(event):
         logger.warning("⚠️ bot_application не инициализирован!")
         return
     
-    # Сообщения с префиксом "telegram:" отправляются ВСЕГДА, независимо от настроек
+    # Сообщения с префиксом "tg:" отправляются ВСЕГДА, независимо от настроек
     if event.event_type == 'telegram_message':
-        logger.info(f"📨 Обработка telegram-сообщения от {event.player_name}")
+        logger.info(f"📨 Обработка tg-сообщения от {event.player_name}")
         try:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            
             # Используем встроенный метод форматирования
             message = event.format_telegram()
+            
+            # Создаем inline кнопку "Ответить" с автозаполнением текста
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    text="💬 Ответить",
+                    switch_inline_query_current_chat=f"/say {event.player_name} "
+                )]
+            ])
             
             logger.info(f"📤 Отправка в группу {NOTIFICATION_GROUP_ID}: {message}")
             await bot_application.bot.send_message(
                 chat_id=NOTIFICATION_GROUP_ID,
                 text=message,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_markup=keyboard
             )
             logger.info(f"✅ Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки telegram-сообщения: {e}", exc_info=True)
+            logger.error(f"❌ Ошибка отправки tg-сообщения: {e}", exc_info=True)
         return
     
     # Для остальных событий проверяем, включен ли мониторинг

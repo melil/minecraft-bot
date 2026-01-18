@@ -112,10 +112,10 @@ class MinecraftLogParser:
             re.IGNORECASE
         ),
         
-        # [12:34:56] [Server thread/INFO]: [Not Secure] <Player> telegram: message text
-        # Важно: проверяем префикс telegram: в начале сообщения
+        # [12:34:56] [Server thread/INFO]: [Not Secure] <Player> tg: message text
+        # Важно: проверяем префикс tg: в начале сообщения
         'telegram_message': re.compile(
-            r':\s*(?:\[Not Secure\]\s*)?<(\w+)>\s*telegram:\s*(.+)$',
+            r':\s*(?:\[Not Secure\]\s*)?<(\w+)>\s*tg:\s*(.+)$',
             re.IGNORECASE
         ),
     }
