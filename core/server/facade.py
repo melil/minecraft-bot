@@ -27,6 +27,7 @@ class ServerFacade:
         try:
             # Получаем информацию о сервере
             server_data = await self.api.get_server_info()
+            balance_data = await self.api.get_balance_info()
 
             # Маппинг состояний REG.RU -> внутренние состояния
             state_map = {
@@ -44,6 +45,8 @@ class ServerFacade:
             status = ServerStatus(
                 state=vps_state,
                 ip=server_data.get("ip"),
+                balance=balance_data.get("balance"),
+                hour_price=balance_data.get("hourly_cost"),
                 uptime=None  # REG.RU API не предоставляет uptime напрямую
             )
 

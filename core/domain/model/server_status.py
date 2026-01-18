@@ -39,6 +39,8 @@ class ServerStatus:
     players: int = 0
     max_players: int = 20
     names: Optional[List[str]] = None
+    balance: Optional[float] = None
+    hour_price: Optional[float] = None
 
     @staticmethod
     def format_server_status(status: 'ServerStatus', monitoring_enabled: bool) -> str:
@@ -70,6 +72,12 @@ class ServerStatus:
         else:
             result += f"⏱️ <b>Uptime:</b> N/A\n"
 
+        if status.balance:
+            result+= f"💰 <b>Баланс:</b> {status.balance} ₽\n"
+
+        if status.hour_price:
+            result+= f"🔥 <b>Стоимость в час:</b> {status.hour_price} ₽\n"
+
         if status.state == ServerState.READY and status.minecraft_active:
             result += f"\n🎮 <b>Minecraft:</b> Активен\n"
             result += f"👥 <b>Игроков:</b> {status.players}/{status.max_players}"
@@ -83,7 +91,7 @@ class ServerStatus:
         result += (
             "🟢 <b>Автовыключение:</b> Включено"
             if monitoring_enabled
-            else "🔴 <b>Автовыключение:</b> Выключено"
+            else "🔴 <b>Автовыключение:</b> Отключено"
         )
 
         return result

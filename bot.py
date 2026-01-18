@@ -504,6 +504,22 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_popup_balance_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура пополнения баланса"""
+    keyboard = [
+        [InlineKeyboardButton(
+            f"🟨 Тиньков сбор:",
+            url="https://www.tbank.ru/cf/2dzkoyJFsJc"
+        ), InlineKeyboardButton(
+            f"🟩 СБП, Карта и тд (моментально):",
+            url="https://reg.cloud/prolong"
+        )],
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")]
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 # ==================== КОМАНДЫ БОТА ====================
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -844,6 +860,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             settings_text,
             reply_markup=get_settings_keyboard(),
+            parse_mode="HTML"
+        )
+
+        # ========== Пополнить ==========
+    elif data == "popup_balance":
+        result: ServerStatus = await facade.status()
+
+        settings_text = (
+            "⚙️ <b>Пополнение VPS</b>\n\n"
+            f"Есть два варианта:\n"
+            "<b>1.:Полуавтоматический</b>\n"
+            "Вы отправляете мне на Т-банк по ссылке, дальше я оплачиваю руками через ЛК\n\n"
+            "<b>2.:Автоматический</b>\n\n"
+            f"Оплачивайте по ссылке введя айпи сервера <code>{result.ip}</code> (кликабельно) в поле ввода reg.cloud\n"
+            "Средства будут зачислены автоматически\n\n"
+            f"Текущий баланс: {result.balance}\n"
+            f"Стоимость в час: {result.hour_price}\n\n"
+            "Используйте кнопки ниже для выбора:"
+        )
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=get_popup_balance_keyboard(),
             parse_mode="HTML"
         )
 
