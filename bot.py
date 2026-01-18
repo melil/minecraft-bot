@@ -928,16 +928,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("❌ Игрок не найден", show_alert=True)
                 return
             
-            # Проверяем кэш
+            # Проверяем кэш (только если содержит новые поля)
             cached = db.get_cached_player_stats(player_uuid, cache_minutes=5)
+            use_cache = cached and hasattr(cached, 'blocks_mined') and cached.blocks_mined is not None
             
-            if cached:
+            if use_cache:
                 stats = {
                     'nickname': cached.minecraft_nickname,
                     'playtime_ticks': cached.playtime_ticks,
                     'deaths': cached.deaths,
                     'mob_kills': cached.mob_kills,
                     'jumps': cached.jumps,
+                    'blocks_mined': cached.blocks_mined,
+                    'damage_dealt': cached.damage_dealt,
+                    'damage_taken': cached.damage_taken,
                 }
                 from core.minecraft.stats import format_playtime, ticks_to_timedelta
                 stats['playtime_formatted'] = format_playtime(ticks_to_timedelta(cached.playtime_ticks))
@@ -962,6 +966,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     deaths=stats.get('deaths', 0),
                     mob_kills=stats.get('mob_kills', 0),
                     jumps=stats.get('jumps', 0),
+                    blocks_mined=stats.get('blocks_mined', 0),
+                    damage_dealt=stats.get('damage_dealt', 0),
+                    damage_taken=stats.get('damage_taken', 0),
                     last_seen=datetime.utcnow()
                 )
             

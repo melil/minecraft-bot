@@ -50,9 +50,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
         
-        # Проверяем кэш
+        # Проверяем кэш (только если содержит новые поля)
         cached = db.get_cached_player_stats_by_nickname(nickname, cache_minutes=5)
-        if cached:
+        use_cache = cached and hasattr(cached, 'blocks_mined') and cached.blocks_mined is not None
+        
+        if use_cache:
             logger.info(f"📦 Используем кэшированную статистику для {nickname}")
             stats = {
                 'nickname': cached.minecraft_nickname,
@@ -60,6 +62,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'deaths': cached.deaths,
                 'mob_kills': cached.mob_kills,
                 'jumps': cached.jumps,
+                'blocks_mined': cached.blocks_mined,
+                'damage_dealt': cached.damage_dealt,
+                'damage_taken': cached.damage_taken,
             }
             stats['playtime_formatted'] = format_playtime_from_ticks(cached.playtime_ticks)
         else:
@@ -150,42 +155,18 @@ async def top_playtime_command(update: Update, context: ContextTypes.DEFAULT_TYP
             except ValueError:
                 pass
         
-        # Проверяем, есть ли свежий кэш (последнее обновление менее 10 минут назад)
-        cached_players = db.get_top_players_by_playtime(limit=limit)
+        # ВСЕГДА загружаем свежие данные с сервера (не используем кэш для топа)
+        logger.info(f"🔄 Загружаем свежий топ с сервера (limit={limit})")
+        top_players = await get_top_players_by_playtime(MINECRAFT_SERVER_SSH, limit=limit, force_reload=True)
         
-        use_cache = False
-        if cached_players:
-            # Проверяем свежесть кэша
-            latest_update = max(p.last_updated for p in cached_players)
-            cache_age = (datetime.utcnow() - latest_update).total_seconds() / 60
-            
-            if cache_age < 10:
-                use_cache = True
-                logger.info(f"📦 Используем кэшированный топ (обновлен {cache_age:.1f} мин назад)")
+        if not top_players:
+            await update.message.reply_text(
+                "❌ Не удалось загрузить статистику игроков"
+            )
+            return
         
-        if use_cache:
-            # Используем кэшированные данные
-            top_players = [
-                {
-                    'nickname': p.minecraft_nickname or 'Unknown',
-                    'playtime_ticks': p.playtime_ticks,
-                    'playtime_formatted': format_playtime_from_ticks(p.playtime_ticks)
-                }
-                for p in cached_players
-            ]
-        else:
-            # Загружаем свежие данные с сервера
-            logger.info(f"🔄 Загружаем свежую статистику с сервера")
-            top_players = await get_top_players_by_playtime(MINECRAFT_SERVER_SSH, limit=limit)
-            
-            if not top_players:
-                await update.message.reply_text(
-                    "❌ Не удалось загрузить статистику игроков"
-                )
-                return
-            
-            # Обновляем кэш
-            for player in top_players:
+        # Обновляем кэш
+        for player in top_players:
                 db.update_player_stats(
                     minecraft_uuid=player['uuid'],
                     minecraft_nickname=player['nickname'],
