@@ -44,7 +44,7 @@ jobs:
             ls -la core/bot/commands/ || echo "⚠️ Папка core/bot/commands не найдена"
             
             echo "🐍 Проверяем Python зависимости..."
-            /usr/bin/python3 -m pip install -q -r requirements.txt
+            /root/minecraft-bot/venv/bin/python -m pip install -q -r requirements.txt
             
             echo "🔄 Перезапускаем сервис..."
             if systemctl restart minecraft-bot.service; then

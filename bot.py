@@ -26,7 +26,8 @@ from core.bot.commands import (
     register_admin_handlers,
     register_settings_handlers,
     register_balance_handlers,
-    register_chat_handlers
+    register_chat_handlers,
+    register_map_handlers
 )
 from core.bot.commands.managers import OperationManager, AdminManager, SettingsManager
 from core.bot.keyboards import get_dynamic_keyboard, get_settings_keyboard, get_popup_balance_keyboard
@@ -41,6 +42,9 @@ db = get_db()
 ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
 ENABLE_GROUP_NOTIFICATIONS = True  # ✅ Включить/выключить уведомления в группу
 NOTIFICATION_GROUP_ID = -5142213077  # ✅ ID группы для уведомлений (например: -1001234567890)
+
+# ==================== BLUEMAP SETTINGS ====================
+BLUEMAP_URL = "http://95.163.227.185:8100"  # URL веб-карты BlueMap
 
 # ==================== ADMIN IDS FOR AUTO-PROMOTION ====================
 # These IDs will be auto-promoted to admin on first interaction
@@ -498,7 +502,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text="⚠️ Сервер уже выполняет другую операцию. Попробуйте позже.",
-                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
                 parse_mode="HTML"
             )
             cancel_operation(chat_id)
@@ -527,7 +531,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=f"{state_emoji} {progress}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
-                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
                 parse_mode="HTML",
                 disable_web_page_preview=True
             )
@@ -551,7 +555,7 @@ async def perform_server_operation(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=f"{success_message}\n\n{ServerStatus.format_server_status(status, monitoring_enabled=idle_monitoring_enabled)}",
-                    reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
+                    reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
@@ -574,7 +578,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text="❌ Операция отменена",
-                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
                 parse_mode="HTML"
             )
         except:
@@ -587,7 +591,7 @@ async def perform_server_operation(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=f"❌ Ошибка: {e}",
-                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin),
+                reply_markup=await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
                 parse_mode="HTML"
             )
         except:
@@ -683,7 +687,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Проверяю статус...")
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result, idle_monitoring_enabled)
-        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL)
         await query.edit_message_text(
             text,
             reply_markup=keyboard,
@@ -811,7 +815,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "back_to_main":
         result: ServerStatus = await facade.status()
         text = ServerStatus.format_server_status(result, monitoring_enabled=idle_monitoring_enabled)
-        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL)
         await query.edit_message_text(
             text,
             reply_markup=keyboard,
@@ -840,7 +844,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         operation_type, initial_text = operation_map[data]
 
         # Обновляем сообщение
-        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, True)
+        keyboard = await get_dynamic_keyboard(facade, idle_monitoring_enabled, True, BLUEMAP_URL)
         await query.edit_message_text(initial_text, reply_markup=keyboard)
 
         # Создаем фоновую задачу
@@ -975,7 +979,7 @@ def main():
     
     # Обертки для клавиатур
     async def keyboard_builder(show_admin: bool):
-        return await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin)
+        return await get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL)
     
     def balance_keyboard_builder():
         return get_popup_balance_keyboard()
@@ -1046,6 +1050,17 @@ def main():
         keyboard_builder,
         MINECRAFT_SERVER_SSH,
         lambda: idle_monitoring_enabled,
+        register_or_update_user,
+        register_or_update_group
+    )
+    
+    # Регистрируем обработчики команд карты
+    from core.bluemap import BlueMapAPI
+    bluemap_api = BlueMapAPI(BLUEMAP_URL)
+    
+    register_map_handlers(
+        application,
+        bluemap_api,
         register_or_update_user,
         register_or_update_group
     )

@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 async def get_dynamic_keyboard(
     facade,
     idle_monitoring_enabled: bool,
-    show_admin_buttons: bool = False
+    show_admin_buttons: bool = False,
+    bluemap_url: str = None
 ) -> InlineKeyboardMarkup:
     """Создает динамическую клавиатуру в зависимости от состояния сервера"""
     keyboard = [
@@ -22,6 +23,12 @@ async def get_dynamic_keyboard(
             InlineKeyboardButton("💵 Пополнить", callback_data="popup_balance")
         ]
     ]
+    
+    # Добавляем кнопку карты если URL предоставлен
+    if bluemap_url:
+        keyboard.append([
+            InlineKeyboardButton("🗺️ Карта сервера", url=bluemap_url)
+        ])
 
     if show_admin_buttons:
         try:

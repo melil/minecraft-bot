@@ -7,6 +7,7 @@ from .admin import register_admin_handlers
 from .settings import register_settings_handlers
 from .balance import register_balance_handlers
 from .chat import register_chat_handlers
+from .map import register_map_handlers
 
 __all__ = [
     'register_info_handlers',
@@ -14,5 +15,6 @@ __all__ = [
     'register_admin_handlers',
     'register_settings_handlers',
     'register_balance_handlers',
-    'register_chat_handlers'
+    'register_chat_handlers',
+    'register_map_handlers'
 ]
