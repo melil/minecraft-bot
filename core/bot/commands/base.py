@@ -7,8 +7,8 @@ from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
 
-# Hardcoded group ID
-NOTIFICATION_GROUP_ID = -5142213077
+# Hardcoded supergroup ID (supergroup с топиками)
+NOTIFICATION_GROUP_ID = -1003506839886
 
 
 class CommandBase:

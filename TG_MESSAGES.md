@@ -90,11 +90,15 @@ tg: Срочно нужна помощь!
 # Независимо от флага log_monitoring_enabled
 ```
 
-### ID группы для отправки:
+### ID supergroup для отправки:
 
 ```python
-NOTIFICATION_GROUP_ID = -5142213077  # Ваша группа
+NOTIFICATION_GROUP_ID = -1003506839886  # Ваша supergroup с топиками
 ```
+
+### Топики:
+
+Сообщения с префиксом `tg:` отправляются в **топик 30 (chat)** для общения между Minecraft и Telegram.
 
 ---
 
@@ -181,9 +185,9 @@ if message.lower().startswith('tg:') or message.lower().startswith('tg '):
    tail -f /path/to/bot.log | grep "📨"
    ```
 
-3. **Проверьте ID группы:**
+3. **Проверьте ID supergroup:**
    ```python
-   NOTIFICATION_GROUP_ID = -5142213077  # В bot.py
+   NOTIFICATION_GROUP_ID = -1003506839886  # В bot.py (supergroup с топиками)
    ```
 
 4. **Проверьте права бота в группе:**

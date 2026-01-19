@@ -11,7 +11,7 @@ from telegram.ext import (
     ContextTypes,
     InlineQueryHandler
 )
-from core.config import TELEGRAM_TOKEN, REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH
+from core.config import TELEGRAM_TOKEN, REGRU_CLOUD_TOKEN, MINECRAFT_SERVER_ID, MINECRAFT_SERVER_SSH, NOTIFICATION_TOPICS
 from core.server.facade import ServerFacade
 from core.domain.model.action_result import ActionResult
 from core.domain.model.server_status import ServerStatus
@@ -42,8 +42,8 @@ db = get_db()
 
 # ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
 ENABLE_ADMIN_NOTIFICATIONS = False  # ✅ Включить/выключить уведомления админам
-ENABLE_GROUP_NOTIFICATIONS = True  # ✅ Включить/выключить уведомления в группу
-NOTIFICATION_GROUP_ID = -1003506839886  # ✅ ID группы для уведомлений (например: -1001234567890)
+ENABLE_GROUP_NOTIFICATIONS = True  # ✅ Включить/выключить уведомления в supergroup
+NOTIFICATION_GROUP_ID = -1003506839886  # ✅ ID supergroup для уведомлений (supergroup с топиками)
 
 # ==================== BLUEMAP SETTINGS ====================
 BLUEMAP_URL = "http://95.163.227.185:8100"  # URL веб-карты BlueMap
@@ -160,19 +160,24 @@ async def notify_admins(text: str):
             logger.error(f"Не удалось уведомить админа {admin.telegram_id}: {e}")
 
 
-async def notify_group(text: str):
-    """Отправляет уведомление в группу"""
+async def notify_group(text: str, topic_id: int = None):
+    """Отправляет уведомление в supergroup (опционально в указанный топик)"""
     if not ENABLE_GROUP_NOTIFICATIONS or not NOTIFICATION_GROUP_ID or not bot_application:
         return
 
     try:
-        await bot_application.bot.send_message(
-            chat_id=NOTIFICATION_GROUP_ID,
-            text=text,
-            parse_mode="HTML"
-        )
+        message_params = {
+            'chat_id': NOTIFICATION_GROUP_ID,
+            'text': text,
+            'parse_mode': "HTML"
+        }
+        # Добавляем message_thread_id только если указан topic_id
+        if topic_id is not None:
+            message_params['message_thread_id'] = topic_id
+        
+        await bot_application.bot.send_message(**message_params)
     except Exception as e:
-        logger.error(f"Не удалось отправить уведомление в группу {NOTIFICATION_GROUP_ID}: {e}")
+        logger.error(f"Не удалось отправить уведомление в supergroup {NOTIFICATION_GROUP_ID} (топик: {topic_id}): {e}")
 
 
 # ==================== МОНИТОРИНГ ПРОСТОЯ ====================
@@ -277,7 +282,8 @@ async def auto_shutdown_server():
         await notify_admins("✅ Сервер успешно остановлен (автоматически)")
         await notify_group(
             "🛑 <b>Сервер Minecraft остановлен</b>\n\n"
-            "Причина: отсутствие игроков 5 минут"
+            "Причина: отсутствие игроков 5 минут",
+            topic_id=NOTIFICATION_TOPICS['server_status']
         )
 
         # Останавливаем мониторинг
@@ -350,12 +356,13 @@ async def minecraft_event_handler(event):
                 )]
             ])
             
-            logger.info(f"📤 Отправка в группу {NOTIFICATION_GROUP_ID}: {message}")
+            logger.info(f"📤 Отправка в supergroup {NOTIFICATION_GROUP_ID} (топик 30): {message}")
             await bot_application.bot.send_message(
                 chat_id=NOTIFICATION_GROUP_ID,
                 text=message,
                 parse_mode="HTML",
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                message_thread_id=NOTIFICATION_TOPICS['telegram_message']
             )
             logger.info(f"✅ Сообщение из Minecraft отправлено в Telegram: {event.player_name}")
         except Exception as e:
@@ -376,11 +383,15 @@ async def minecraft_event_handler(event):
     try:
         from core.minecraft.log_monitor import send_event_to_telegram
         
+        # Определяем топик для события (по умолчанию logs - топик 2)
+        topic_id = NOTIFICATION_TOPICS.get(event.event_type, NOTIFICATION_TOPICS.get('default'))
+        
         await send_event_to_telegram(
             event,
             bot_application,
             NOTIFICATION_GROUP_ID,
-            MINECRAFT_EVENTS_CONFIG
+            MINECRAFT_EVENTS_CONFIG,
+            topic_id=topic_id
         )
     except Exception as e:
         logger.error(f"❌ Ошибка обработки события Minecraft: {e}", exc_info=True)
@@ -563,7 +574,7 @@ async def perform_server_operation(
                 )
 
                 # Уведомления
-                await notify_group(group_notification(status))
+                await notify_group(group_notification(status), topic_id=NOTIFICATION_TOPICS['server_status'])
 
                 break
 

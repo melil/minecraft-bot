@@ -75,3 +75,19 @@ print(f"🔐 SSH: {MINECRAFT_SERVER_SSH['user']}@{MINECRAFT_SERVER_SSH['host']}:
 if MINECRAFT_SERVER_SSH['key_file']:
     print(f"🔑 SSH Key: {MINECRAFT_SERVER_SSH['key_file']}")
 print("=" * 60)
+
+# ==================== TOPICS CONFIGURATION ====================
+# Конфигурация топиков для supergroup с топиками
+# ID топиков для автоматических уведомлений от бота
+NOTIFICATION_TOPICS = {
+    'telegram_message': 30,     # Топик для сообщений tg: (общение между MC и Telegram)
+    'join': 2,                  # Топик для входа игроков (logs)
+    'leave': 2,                 # Топик для выхода игроков (logs)
+    'chat': 2,                  # Топик для сообщений в чате MC (logs)
+    'death': 2,                 # Топик для смертей (logs)
+    'achievement': 2,           # Топик для достижений (logs)
+    'server_status': 39,       # Топик для уведомлений о статусе сервера
+    'jokes': 32,                # Топик для анекдотов (используется при отправке в группу)
+    'map': 37,                  # Топик для карты (используется при отправке в группу)
+    'default': None             # По умолчанию - общий чат (без топика)
+}

@@ -183,8 +183,19 @@ MINECRAFT_EVENTS_CONFIG = {
 ```python
 # bot.py
 ENABLE_ADMIN_NOTIFICATIONS = False  # Уведомления админам
-ENABLE_GROUP_NOTIFICATIONS = True   # Уведомления в группу
-NOTIFICATION_GROUP_ID = -1234567890 # ID группы
+ENABLE_GROUP_NOTIFICATIONS = True   # Уведомления в supergroup
+NOTIFICATION_GROUP_ID = -1003506839886  # ID supergroup (supergroup с топиками)
+
+# core/config.py
+NOTIFICATION_TOPICS = {
+    'telegram_message': 30,     # Топик для сообщений tg:
+    'join': 2,                  # Топик для входа игроков
+    'leave': 2,                 # Топик для выхода игроков
+    'chat': 2,                  # Топик для сообщений в чате MC
+    'death': 2,                 # Топик для смертей
+    'achievement': 2,           # Топик для достижений
+    'server_status': 39,        # Топик для уведомлений о статусе сервера
+}
 ```
 
 ---
@@ -195,7 +206,7 @@ NOTIFICATION_GROUP_ID = -1234567890 # ID группы
 - **[QUICKSTART_CHAT.md](QUICKSTART_CHAT.md)** - Быстрый старт для функционала общения
 - **[DATABASE_UPGRADE.md](DATABASE_UPGRADE.md)** - Обновление базы данных
 - **[MIGRATION_PLAYER_STATS.md](MIGRATION_PLAYER_STATS.md)** - Миграция для статистики игроков
-- **[GROUP_SUPPORT.md](GROUP_SUPPORT.md)** - Поддержка групп
+- **[GROUP_SUPPORT.md](GROUP_SUPPORT.md)** - Поддержка supergroup с топиками
 - **[MIGRATION.md](MIGRATION.md)** - Миграция на новую версию
 
 ---

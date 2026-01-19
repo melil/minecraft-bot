@@ -374,16 +374,18 @@ async def send_event_to_telegram(
     event: MinecraftEvent,
     bot_application,
     chat_id: int,
-    enabled_events: Optional[Dict[str, bool]] = None
+    enabled_events: Optional[Dict[str, bool]] = None,
+    topic_id: int = None
 ):
     """
-    Отправляет событие в Telegram чат
+    Отправляет событие в Telegram чат (опционально в указанный топик)
     
     Args:
         event: Событие Minecraft
         bot_application: Telegram bot application
         chat_id: ID чата для отправки
         enabled_events: Словарь с включенными типами событий
+        topic_id: ID топика для отправки (message_thread_id)
     """
     # Проверяем, включен ли данный тип события
     if enabled_events and not enabled_events.get(event.event_type, True):
@@ -392,13 +394,18 @@ async def send_event_to_telegram(
     try:
         message = format_event_for_telegram(event)
         
-        await bot_application.bot.send_message(
-            chat_id=chat_id,
-            text=message,
-            parse_mode="HTML"
-        )
+        message_params = {
+            'chat_id': chat_id,
+            'text': message,
+            'parse_mode': "HTML"
+        }
+        # Добавляем message_thread_id только если указан topic_id
+        if topic_id is not None:
+            message_params['message_thread_id'] = topic_id
         
-        logger.info(f"📤 Событие отправлено в Telegram: {event.event_type}")
+        await bot_application.bot.send_message(**message_params)
+        
+        logger.info(f"📤 Событие отправлено в Telegram: {event.event_type} (топик: {topic_id})")
         
     except Exception as e:
         logger.error(f"Ошибка отправки события в Telegram: {e}")
