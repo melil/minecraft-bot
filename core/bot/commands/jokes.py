@@ -7,9 +7,10 @@ import json
 import re
 import aiohttp
 from telegram import Update
-from telegram.ext import Application, ContextTypes
+from telegram.ext import Application, ContextTypes, CommandHandler
 
-from .base import CommandBase
+from .base import CommandBase, NOTIFICATION_GROUP_ID
+from core.config import NOTIFICATION_TOPICS
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,48 @@ class JokeCommands(CommandBase):
         except Exception as e:
             logger.error(f"Ошибка при отправке анекдота: {e}")
             await query.message.reply_text("❌ Ошибка при отправке анекдота")
+    
+    async def handle_joke_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработчик команды /joke
+        Отправляет анекдот в тред группы или отвечает в личке
+        """
+        user = update.effective_user
+        chat = update.effective_chat
+        
+        # Register user and group
+        self._register_user_if_needed(user)
+        self._register_group_if_needed(chat)
+        
+        # Получаем анекдот
+        content_type, content = await self.get_random_joke()
+        
+        if content_type:
+            message_text = f"😂 <b>{content_type}</b>\n\n{content}"
+        else:
+            # Если ошибка, content уже содержит текст ошибки
+            message_text = content
+        
+        # Отправляем анекдот
+        try:
+            if chat.id == NOTIFICATION_GROUP_ID:
+                # Отправляем в тред группы
+                await update.message.bot.send_message(
+                    chat_id=NOTIFICATION_GROUP_ID,
+                    text=message_text,
+                    parse_mode="HTML",
+                    message_thread_id=NOTIFICATION_TOPICS['jokes']
+                )
+            else:
+                # Отвечаем в личке или другой группе
+                await update.message.reply_text(
+                    message_text,
+                    parse_mode="HTML"
+                )
+            logger.info(f"Анекдот отправлен через /joke пользователю {user.id} ({user.username or user.first_name})")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке анекдота: {e}")
+            await update.message.reply_text("❌ Ошибка при отправке анекдота")
 
 
 def register_joke_handlers(app: Application, facade, is_admin_checker, keyboard_builder, user_registrar=None, group_registrar=None):
@@ -139,6 +182,9 @@ def register_joke_handlers(app: Application, facade, is_admin_checker, keyboard_
     Note: Callback handler регистрируется в bot.py в функции button_callback
     """
     commands = JokeCommands(facade, is_admin_checker, keyboard_builder, user_registrar, group_registrar)
+    
+    # Регистрируем обработчик команды /joke
+    app.add_handler(CommandHandler("joke", commands.handle_joke_command))
     
     logger.info("✅ Команды анекдотов зарегистрированы")
     
