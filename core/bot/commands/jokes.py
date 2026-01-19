@@ -156,8 +156,11 @@ class JokeCommands(CommandBase):
         # Отправляем анекдот
         try:
             if chat.id == NOTIFICATION_GROUP_ID:
-                # Отправляем в тред группы
-                await update.message.bot.send_message(
+                # Отправляем в тред группы jokes
+                # Используем update.get_bot() для получения бота
+                bot = update.get_bot()
+                logger.debug(f"Отправка анекдота в группу {NOTIFICATION_GROUP_ID}, тред {NOTIFICATION_TOPICS['jokes']}")
+                await bot.send_message(
                     chat_id=NOTIFICATION_GROUP_ID,
                     text=message_text,
                     parse_mode="HTML",
@@ -171,8 +174,11 @@ class JokeCommands(CommandBase):
                 )
             logger.info(f"Анекдот отправлен через /joke пользователю {user.id} ({user.username or user.first_name})")
         except Exception as e:
-            logger.error(f"Ошибка при отправке анекдота: {e}")
-            await update.message.reply_text("❌ Ошибка при отправке анекдота")
+            logger.error(f"Ошибка при отправке анекдота: {e}", exc_info=True)
+            try:
+                await update.message.reply_text("❌ Ошибка при отправке анекдота")
+            except Exception as e2:
+                logger.error(f"Не удалось отправить сообщение об ошибке: {e2}")
 
 
 def register_joke_handlers(app: Application, facade, is_admin_checker, keyboard_builder, user_registrar=None, group_registrar=None):
