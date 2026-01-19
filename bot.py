@@ -1191,7 +1191,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Создаем экземпляр команд анекдотов
         joke_commands = JokeCommands(facade, is_admin, 
                                       lambda show_admin: get_dynamic_keyboard(facade, idle_monitoring_enabled, show_admin, BLUEMAP_URL),
-                                      register_or_update_user, register_or_update_group)
+                                      register_or_update_user, register_or_update_group,
+                                      MINECRAFT_SERVER_SSH)
         
         # Вызываем обработчик
         await joke_commands.handle_joke_callback(update, context)
@@ -1455,7 +1456,8 @@ def main():
         is_admin,
         keyboard_builder,
         register_or_update_user,
-        register_or_update_group
+        register_or_update_group,
+        MINECRAFT_SERVER_SSH
     )
 
     # Регистрируем обработчик inline запросов

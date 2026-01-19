@@ -37,8 +37,9 @@ JOKE_TYPES = {
 class JokeCommands(CommandBase):
     """Команды для получения анекдотов"""
     
-    def __init__(self, facade, admin_checker, keyboard_builder, user_registrar=None, group_registrar=None):
+    def __init__(self, facade, admin_checker, keyboard_builder, user_registrar=None, group_registrar=None, minecraft_ssh_config=None):
         super().__init__(facade, admin_checker, keyboard_builder, user_registrar, group_registrar)
+        self.minecraft_ssh_config = minecraft_ssh_config
     
     async def get_random_joke(self) -> tuple[str, str]:
         """
@@ -96,6 +97,44 @@ class JokeCommands(CommandBase):
             logger.error(f"Неожиданная ошибка: {e}", exc_info=True)
             return None, "❌ Произошла ошибка при получении анекдота"
     
+    async def _send_joke_to_minecraft(self, content_type: str, content: str):
+        """
+        Отправляет анекдот в Minecraft чат (тихо, без ошибок пользователю)
+        
+        Args:
+            content_type: Тип контента (например, "Анекдот")
+            content: Текст анекдота
+        """
+        if not self.minecraft_ssh_config:
+            logger.debug("Minecraft SSH config не настроен, пропускаем отправку в MC")
+            return
+        
+        try:
+            # Проверяем, что сервер запущен
+            from core.minecraft.service import is_ready
+            server_ready = await is_ready(self.minecraft_ssh_config)
+            
+            if not server_ready:
+                logger.debug("Minecraft сервер не запущен, пропускаем отправку анекдота")
+                return
+            
+            # Формируем сообщение для Minecraft
+            # Используем формат: [Telegram: Анекдот] текст анекдота
+            minecraft_message = f"{content_type}: {content}"
+            
+            # Отправляем через RCON
+            from core.minecraft.rcon import say
+            success = await say(self.minecraft_ssh_config, minecraft_message, sender="Анекдот")
+            
+            if success:
+                logger.info(f"✅ Анекдот отправлен в Minecraft: {content_type}")
+            else:
+                logger.debug(f"Не удалось отправить анекдот в Minecraft (RCON недоступен или ошибка)")
+                
+        except Exception as e:
+            # Тихая обработка ошибок - не показываем пользователю
+            logger.debug(f"Ошибка при отправке анекдота в Minecraft (тихо игнорируем): {e}")
+    
     async def handle_joke_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Обработчик callback для кнопки "Анекдот для Вовы"
@@ -128,6 +167,10 @@ class JokeCommands(CommandBase):
                 parse_mode="HTML"
             )
             logger.info(f"Анекдот отправлен пользователю {user.id} ({user.username or user.first_name})")
+            
+            # Отправляем анекдот в Minecraft (тихо, без ошибок пользователю)
+            if content_type:
+                await self._send_joke_to_minecraft(content_type, content)
         except Exception as e:
             logger.error(f"Ошибка при отправке анекдота: {e}")
             await query.message.reply_text("❌ Ошибка при отправке анекдота")
@@ -173,6 +216,10 @@ class JokeCommands(CommandBase):
                     parse_mode="HTML"
                 )
             logger.info(f"Анекдот отправлен через /joke пользователю {user.id} ({user.username or user.first_name})")
+            
+            # Отправляем анекдот в Minecraft (тихо, без ошибок пользователю)
+            if content_type:
+                await self._send_joke_to_minecraft(content_type, content)
         except Exception as e:
             logger.error(f"Ошибка при отправке анекдота: {e}", exc_info=True)
             try:
@@ -181,13 +228,22 @@ class JokeCommands(CommandBase):
                 logger.error(f"Не удалось отправить сообщение об ошибке: {e2}")
 
 
-def register_joke_handlers(app: Application, facade, is_admin_checker, keyboard_builder, user_registrar=None, group_registrar=None):
+def register_joke_handlers(app: Application, facade, is_admin_checker, keyboard_builder, user_registrar=None, group_registrar=None, minecraft_ssh_config=None):
     """
     Регистрирует обработчики команд анекдотов
     
+    Args:
+        app: Telegram Application
+        facade: ServerFacade
+        is_admin_checker: Функция проверки прав администратора
+        keyboard_builder: Функция построения клавиатуры
+        user_registrar: Функция регистрации пользователя
+        group_registrar: Функция регистрации группы
+        minecraft_ssh_config: Конфигурация SSH для Minecraft сервера
+    
     Note: Callback handler регистрируется в bot.py в функции button_callback
     """
-    commands = JokeCommands(facade, is_admin_checker, keyboard_builder, user_registrar, group_registrar)
+    commands = JokeCommands(facade, is_admin_checker, keyboard_builder, user_registrar, group_registrar, minecraft_ssh_config)
     
     # Регистрируем обработчик команды /joke
     app.add_handler(CommandHandler("joke", commands.handle_joke_command))
